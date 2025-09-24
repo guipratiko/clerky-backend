@@ -1,0 +1,61 @@
+version: '3.8'
+
+services:
+  clerky-backend:
+    build: .
+    ports:
+      - "4500:4500"
+    environment:
+      - NODE_ENV=production
+      - PORT=4500
+      - MONGODB_URI=mongodb+srv://clerky:qGfdSCz1bDTuHD5o@cluster0.6mgam.mongodb.net/sis-clerky?retryWrites=true&w=majority&appName=Cluster0
+      - EVOLUTION_API_URL=https://evo.clerky.com.br
+      - EVOLUTION_API_KEY=jsusAvFJtRkszPH1P01dwsVFcuMxJakz
+      - BASE_URL=https://back.clerky.com.br
+      - WEBHOOK_URL=https://back.clerky.com.br/webhook
+      - FRONTEND_URL=http://localhost:3500
+      - FRONTEND_URL_ALT=http://127.0.0.1:3500
+      - FRONTEND_URL_PROD=https://front.clerky.com.br
+      - FRONTEND_URL_APP=https://app.clerky.com.br
+      - JWT_SECRET=whatsapp-evolution-secret-key-2024
+    labels:
+      # Configurações do Traefik
+      - "traefik.enable=true"
+      - "traefik.http.routers.clerky-backend.rule=Host(`back.clerky.com.br`)"
+      - "traefik.http.routers.clerky-backend.entrypoints=websecure"
+      - "traefik.http.routers.clerky-backend.tls.certresolver=letsencrypt"
+      
+      # Configurações para WebSocket
+      - "traefik.http.middlewares.websocket-headers.headers.customrequestheaders.Upgrade=websocket"
+      - "traefik.http.middlewares.websocket-headers.headers.customrequestheaders.Connection=Upgrade"
+      - "traefik.http.middlewares.websocket-headers.headers.customrequestheaders.Sec-WebSocket-Protocol=chat,superchat"
+      
+      # Headers de resposta para WebSocket
+      - "traefik.http.middlewares.websocket-response.headers.customresponseheaders.Upgrade=websocket"
+      - "traefik.http.middlewares.websocket-response.headers.customresponseheaders.Connection=Upgrade"
+      
+      # Timeouts para WebSocket (mais longos para manter conexão)
+      - "traefik.http.middlewares.websocket-timeout.headers.customrequestheaders.X-Forwarded-Proto=https"
+      - "traefik.http.middlewares.websocket-timeout.headers.customrequestheaders.X-Real-IP=$$remote_addr"
+      
+      # Aplicar middlewares
+      - "traefik.http.routers.clerky-backend.middlewares=websocket-headers,websocket-response,websocket-timeout"
+      
+      # Configurações de proxy
+      - "traefik.http.services.clerky-backend.loadbalancer.server.port=4500"
+      - "traefik.http.services.clerky-backend.loadbalancer.healthcheck.path=/api/health"
+      - "traefik.http.services.clerky-backend.loadbalancer.healthcheck.interval=30s"
+      - "traefik.http.services.clerky-backend.loadbalancer.healthcheck.timeout=10s"
+      
+      # Configurações específicas para WebSocket
+      - "traefik.http.routers.clerky-backend.priority=100"
+      - "traefik.http.routers.clerky-backend.tls=true"
+      - "traefik.http.routers.clerky-backend.tls.domains[0].main=back.clerky.com.br"
+      
+    networks:
+      - traefik
+    restart: unless-stopped
+
+networks:
+  traefik:
+    external: true
