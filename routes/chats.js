@@ -655,6 +655,88 @@ router.put('/:instanceName/:chatId/kanban-column', authenticateToken, async (req
   }
 });
 
+// Buscar colunas do Kanban
+router.get('/:instanceName/kanban/columns', authenticateToken, async (req, res) => {
+  try {
+    const { instanceName } = req.params;
+
+    // Definir as colunas padrão do Kanban
+    const defaultColumns = [
+      { id: 'novo', title: 'Novo Contato', chatCount: 0 },
+      { id: 'andamento', title: 'Em Andamento', chatCount: 0 },
+      { id: 'carrinho', title: 'Carrinho Abandonado', chatCount: 0 },
+      { id: 'aprovado', title: 'Aprovado', chatCount: 0 },
+      { id: 'reprovado', title: 'Reprovado', chatCount: 0 }
+    ];
+
+    // Contar quantos chats existem em cada coluna
+    const columnStats = await Chat.aggregate([
+      { $match: { instanceName } },
+      {
+        $group: {
+          _id: '$kanbanColumn',
+          count: { $sum: 1 }
+        }
+      }
+    ]);
+
+    // Mapear as contagens para as colunas
+    const columnsWithCounts = defaultColumns.map(column => {
+      const stat = columnStats.find(s => s._id === column.id);
+      return {
+        ...column,
+        chatCount: stat ? stat.count : 0
+      };
+    });
+
+    res.json({
+      success: true,
+      data: columnsWithCounts
+    });
+  } catch (error) {
+    console.error('Erro ao buscar colunas do Kanban:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Erro interno do servidor'
+    });
+  }
+});
+
+// Buscar contatos de uma coluna específica do Kanban
+router.get('/:instanceName/kanban/column/:columnId/contacts', authenticateToken, async (req, res) => {
+  try {
+    const { instanceName, columnId } = req.params;
+
+    // Validar coluna
+    const validColumns = ['novo', 'andamento', 'carrinho', 'aprovado', 'reprovado'];
+    if (!validColumns.includes(columnId)) {
+      return res.status(400).json({
+        success: false,
+        error: 'Coluna inválida'
+      });
+    }
+
+    // Buscar chats da coluna específica
+    const chats = await Chat.find({ 
+      instanceName, 
+      kanbanColumn: columnId 
+    })
+    .select('chatId name pushName lastMessage lastActivity')
+    .sort({ lastActivity: -1 });
+
+    res.json({
+      success: true,
+      data: chats
+    });
+  } catch (error) {
+    console.error('Erro ao buscar contatos da coluna:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Erro interno do servidor'
+    });
+  }
+});
+
 // Estatísticas das conversas
 router.get('/:instanceName/stats', async (req, res) => {
   try {
