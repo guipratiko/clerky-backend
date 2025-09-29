@@ -20,13 +20,28 @@ class AIWorkflowService {
   }
 
   // Criar novo workflow de IA para o usuário
-  async createAIWorkflow(userId, prompt = '') {
+  async createAIWorkflow(userId, instanceName, prompt = '') {
     try {
-      console.log(`🤖 Criando workflow de IA para usuário: ${userId}`);
+      console.log(`🤖 Criando workflow de IA para usuário: ${userId}, instância: ${instanceName}`);
+      
+      // Verificar se a instância pertence ao usuário
+      const Instance = require('../models/Instance');
+      const instance = await Instance.findOne({
+        userId,
+        instanceName: instanceName
+      });
+
+      if (!instance) {
+        throw new Error('Instância não encontrada ou não pertence ao usuário');
+      }
+
+      if (instance.status !== 'connected') {
+        throw new Error('A instância deve estar conectada para criar workflows de IA');
+      }
       
       // Gerar novo path aleatório
       const newWebhookPath = this.generateRandomWebhookPath();
-      const newWorkflowName = `AI-${newWebhookPath}`;
+      const newWorkflowName = `AI-${instanceName}-${newWebhookPath}`;
       
       console.log(`📝 Novo nome: ${newWorkflowName}`);
       console.log(`🌐 Novo webhook path: ${newWebhookPath}`);
@@ -125,6 +140,7 @@ class AIWorkflowService {
       // 6. Salvar no MongoDB
       const aiWorkflow = new AIWorkflow({
         userId,
+        instanceName,
         workflowId: newWorkflowId,
         workflowName: newWorkflowName,
         webhookUrl: `${this.baseUrl}/webhook/${newWebhookPath}`,
@@ -139,6 +155,7 @@ class AIWorkflowService {
 
       return {
         id: aiWorkflow._id,
+        instanceName,
         workflowId: newWorkflowId,
         workflowName: newWorkflowName,
         webhookUrl: `${this.baseUrl}/webhook/${newWebhookPath}`,

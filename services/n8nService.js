@@ -1,4 +1,5 @@
 const N8nIntegration = require('../models/N8nIntegration');
+const AIWorkflow = require('../models/AIWorkflow');
 const Instance = require('../models/Instance');
 
 class N8nService {
@@ -50,6 +51,20 @@ class N8nService {
       integrations.push(globalIntegration);
     }
 
+    // Buscar AI Workflows ativos para a instância
+    const aiWorkflows = await AIWorkflow.find({ 
+      userId, 
+      instanceName, 
+      isActive: true 
+    });
+
+    for (const aiWorkflow of aiWorkflows) {
+      // AI Workflows sempre enviam MESSAGES_UPSERT para processamento de IA
+      if (eventType === 'MESSAGES_UPSERT' || eventType === 'messages.upsert') {
+        integrations.push(aiWorkflow);
+      }
+    }
+
     return integrations;
   }
 
@@ -98,6 +113,9 @@ class N8nService {
       
       for (const integration of integrations) {
         try {
+          // Verificar se é um AI Workflow
+          const isAIWorkflow = integration.workflowType === 'ai-workflow' || integration.constructor.modelName === 'AIWorkflow';
+          
           // Para MESSAGES_UPSERT, enviar dados exatamente como recebidos
           let webhookData;
           if (eventType === 'MESSAGES_UPSERT' || eventType === 'messages.upsert') {
@@ -110,7 +128,11 @@ class N8nService {
               source: eventData.source
             };
             
-            console.log(`📡 N8N: Payload final para MESSAGES_UPSERT:`, JSON.stringify(webhookData, null, 2));
+            if (isAIWorkflow) {
+              console.log(`🤖 AI Workflow: Enviando MESSAGES_UPSERT para workflow ${integration.workflowName}:`, JSON.stringify(webhookData, null, 2));
+            } else {
+              console.log(`📡 N8N: Payload final para MESSAGES_UPSERT:`, JSON.stringify(webhookData, null, 2));
+            }
           } else {
             // Para outros eventos, aplicar filtros normalmente
             const filteredData = integration.applyFilters(eventData);
@@ -141,9 +163,17 @@ class N8nService {
           });
 
           if (result.success) {
-            console.log(`✅ N8N: Webhook enviado com sucesso para ${integration.webhookUrl}`);
+            if (isAIWorkflow) {
+              console.log(`✅ AI Workflow: Webhook enviado com sucesso para ${integration.webhookUrl}`);
+            } else {
+              console.log(`✅ N8N: Webhook enviado com sucesso para ${integration.webhookUrl}`);
+            }
           } else {
-            console.error(`❌ N8N: Falha ao enviar webhook para ${integration.webhookUrl}:`, result.error);
+            if (isAIWorkflow) {
+              console.error(`❌ AI Workflow: Falha ao enviar webhook para ${integration.webhookUrl}:`, result.error);
+            } else {
+              console.error(`❌ N8N: Falha ao enviar webhook para ${integration.webhookUrl}:`, result.error);
+            }
           }
         } catch (error) {
           console.error(`❌ N8N: Erro ao processar integração ${integration._id}:`, error);

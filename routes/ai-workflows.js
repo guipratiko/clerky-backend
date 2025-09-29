@@ -24,9 +24,16 @@ router.get('/', authenticateToken, async (req, res) => {
 // Criar novo workflow de IA
 router.post('/', authenticateToken, async (req, res) => {
   try {
-    const { prompt } = req.body;
+    const { instanceName, prompt } = req.body;
     
     // Validações básicas
+    if (!instanceName) {
+      return res.status(400).json({
+        success: false,
+        error: 'Nome da instância é obrigatório'
+      });
+    }
+
     if (prompt && prompt.length > 2000) {
       return res.status(400).json({
         success: false,
@@ -34,7 +41,7 @@ router.post('/', authenticateToken, async (req, res) => {
       });
     }
 
-    const workflow = await aiWorkflowService.createAIWorkflow(req.user.id, prompt);
+    const workflow = await aiWorkflowService.createAIWorkflow(req.user.id, instanceName, prompt);
 
     res.status(201).json({
       success: true,

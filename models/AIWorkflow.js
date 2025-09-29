@@ -6,6 +6,10 @@ const AIWorkflowSchema = new mongoose.Schema({
     ref: 'User',
     required: true
   },
+  instanceName: {
+    type: String,
+    required: true
+  },
   workflowId: {
     type: String,
     required: true,
@@ -163,6 +167,76 @@ AIWorkflowSchema.methods.testWebhook = async function(testData = {}) {
       status: error.response?.status
     };
   }
+};
+
+// Método para enviar webhook com retry (similar ao N8nIntegration)
+AIWorkflowSchema.methods.sendWebhook = async function(eventData) {
+  const axios = require('axios');
+  
+  const payload = {
+    event: eventData.event,
+    data: eventData.data,
+    timestamp: new Date().toISOString(),
+    instanceName: this.instanceName,
+    integrationId: this._id,
+    workflowType: 'ai-workflow'
+  };
+
+  const config = {
+    method: 'POST',
+    url: this.webhookUrl,
+    data: payload,
+    timeout: 10000, // 10 segundos
+    headers: {
+      'Content-Type': 'application/json',
+      'User-Agent': 'Clerky-CRM-AI-Workflow/1.0'
+    }
+  };
+
+  let lastError = null;
+  
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      const response = await axios(config);
+      
+      // Atualizar estatísticas
+      this.stats.totalMessages += 1;
+      this.stats.successfulResponses += 1;
+      this.stats.lastMessageAt = new Date();
+      
+      return {
+        success: true,
+        attempt,
+        status: response.status,
+        data: response.data
+      };
+    } catch (error) {
+      lastError = error;
+      
+      if (attempt < 3) {
+        // Aguardar antes da próxima tentativa
+        await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
+      }
+    }
+  }
+
+  // Todas as tentativas falharam
+  this.stats.totalMessages += 1;
+  this.stats.failedResponses += 1;
+  this.stats.lastMessageAt = new Date();
+
+  return {
+    success: false,
+    attempts: 3,
+    error: lastError.message,
+    status: lastError.response?.status
+  };
+};
+
+// Método para aplicar filtros aos dados (para compatibilidade)
+AIWorkflowSchema.methods.applyFilters = function(eventData) {
+  // AI Workflows não aplicam filtros, enviam todos os dados
+  return eventData;
 };
 
 module.exports = mongoose.model('AIWorkflow', AIWorkflowSchema);
