@@ -129,16 +129,14 @@ class AIWorkflowService {
               webhookId: newWebhookPath
             };
           } else if (node.type === '@n8n/n8n-nodes-langchain.agent') {
-            // Modificar AI Agent para deixar System Message limpo
+            // Modificar AI Agent para deixar System Message vazio
             return {
               ...node,
               parameters: {
                 ...node.parameters,
-                // Limpar completamente o prompt/texto
-                text: prompt || '', // Usar prompt personalizado ou vazio
                 options: {
                   ...node.parameters.options,
-                  systemMessage: prompt || '' // System Message limpo
+                  systemMessage: prompt || '' // System Message vazio ou com prompt personalizado
                 }
               }
             };
