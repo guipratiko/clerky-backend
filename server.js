@@ -108,6 +108,7 @@ const webhookRoutes = require('./routes/webhook');
 const externalApiRoutes = require('./routes/external-api');
 const massDispatchRoutes = require('./routes/mass-dispatch');
 const n8nIntegrationRoutes = require('./routes/n8n-integration');
+const aiWorkflowRoutes = require('./routes/ai-workflows');
 
 // Usar rotas
 app.use('/api/auth', authRoutes);
@@ -119,6 +120,7 @@ app.use('/webhook', webhookRoutes);
 app.use('/api/external', externalApiRoutes);
 app.use('/api/mass-dispatch', massDispatchRoutes);
 app.use('/api/n8n-integration', n8nIntegrationRoutes);
+app.use('/api/ai-workflows', aiWorkflowRoutes);
 app.use('/api/contact-crm', require('./routes/contact-crm'));
 app.use('/api/scheduler', require('./routes/scheduler'));
 
