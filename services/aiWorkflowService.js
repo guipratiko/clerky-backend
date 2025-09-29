@@ -167,14 +167,7 @@ class AIWorkflowService {
           return node;
         }),
         connections: originalWorkflow.connections,
-        settings: {
-          ...originalWorkflow.settings,
-          // Limpar configurações automáticas do N8N
-          executionOrder: 'v1',
-          // Remover informações automáticas de edição
-          saveManualExecutions: false,
-          callerPolicy: 'workflowsFromSameOwner'
-        },
+        settings: originalWorkflow.settings,
         staticData: originalWorkflow.staticData
       };
 
