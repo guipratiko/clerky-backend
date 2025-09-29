@@ -16,7 +16,16 @@ class AIWorkflowService {
   generateRandomWebhookPath() {
     const timestamp = new Date().getTime();
     const randomString = Math.random().toString(36).substring(2, 15);
-    return `ai-webhook-${randomString}-${timestamp}`;
+    return `webhook-${randomString}-${timestamp}`;
+  }
+
+  // Função para gerar novo ID de nó
+  generateNewNodeId() {
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+      const r = Math.random() * 16 | 0;
+      const v = c === 'x' ? r : (r & 0x3 | 0x8);
+      return v.toString(16);
+    });
   }
 
   // Criar novo workflow de IA para o usuário
@@ -41,7 +50,7 @@ class AIWorkflowService {
       
       // Gerar novo path aleatório
       const newWebhookPath = this.generateRandomWebhookPath();
-      const newWorkflowName = `AI-${instanceName}-${newWebhookPath}`;
+      const newWorkflowName = newWebhookPath; // Usar o path como nome do workflow
       
       console.log(`📝 Novo nome: ${newWorkflowName}`);
       console.log(`🌐 Novo webhook path: ${newWebhookPath}`);
@@ -79,32 +88,48 @@ class AIWorkflowService {
         console.log(`🤖 AI Agent encontrado: ${aiAgentNode.name}`);
       }
 
-      // 3. Criar novo workflow com webhook modificado e prompt personalizado
+      // 3. Criar novo workflow com webhook novo e System Message vazio
       const newWorkflow = {
         name: newWorkflowName,
         nodes: originalWorkflow.nodes.map(node => {
           if (node.type === 'n8n-nodes-base.webhook') {
-            // Modificar webhook com novo path
+            // Criar um novo webhook completamente novo
             return {
-              ...node,
               parameters: {
-                ...node.parameters,
-                path: newWebhookPath
-              }
+                httpMethod: "POST",
+                path: newWebhookPath,
+                options: {
+                  responseHeaders: {
+                    entries: [
+                      {
+                        name: "Content-Type",
+                        value: "application/json"
+                      }
+                    ]
+                  }
+                }
+              },
+              type: "n8n-nodes-base.webhook",
+              typeVersion: 2,
+              position: [448, 512],
+              id: this.generateNewNodeId(),
+              name: "Webhook1",
+              webhookId: newWebhookPath
             };
           } else if (node.type === '@n8n/n8n-nodes-langchain.agent') {
-            // Modificar AI Agent com prompt personalizado
+            // Modificar AI Agent para deixar System Message vazio
             return {
               ...node,
               parameters: {
                 ...node.parameters,
                 options: {
                   ...node.parameters.options,
-                  systemMessage: prompt || 'Você é um assistente virtual de atendimento. Responda de forma amigável e profissional.'
+                  systemMessage: prompt || '' // System Message vazio ou com prompt personalizado
                 }
               }
             };
           }
+          // Manter outros nós inalterados
           return node;
         }),
         connections: originalWorkflow.connections,
@@ -137,7 +162,16 @@ class AIWorkflowService {
         console.log('⚠️ Não foi possível ativar automaticamente');
       }
 
-      // 6. Salvar no MongoDB
+      // 6. Verificar novo webhook
+      const newWebhookNode = newWorkflow.nodes.find(node => node.type === 'n8n-nodes-base.webhook');
+      console.log(`\n🌐 Novo webhook criado:`);
+      console.log(`   Nome: ${newWebhookNode.name}`);
+      console.log(`   ID: ${newWebhookNode.id}`);
+      console.log(`   Path: ${newWebhookNode.parameters.path}`);
+      console.log(`   Método: ${newWebhookNode.parameters.httpMethod}`);
+      console.log(`   URL completa: ${this.baseUrl}/webhook/${newWebhookPath}`);
+
+      // 7. Salvar no MongoDB
       const aiWorkflow = new AIWorkflow({
         userId,
         instanceName,
@@ -145,8 +179,8 @@ class AIWorkflowService {
         workflowName: newWorkflowName,
         webhookUrl: `${this.baseUrl}/webhook/${newWebhookPath}`,
         webhookPath: newWebhookPath,
-        webhookMethod: webhookNode.parameters.httpMethod,
-        prompt: prompt || 'Você é um assistente virtual de atendimento. Responda de forma amigável e profissional.',
+        webhookMethod: newWebhookNode.parameters.httpMethod,
+        prompt: prompt || '',
         isActive: true
       });
 
@@ -160,9 +194,11 @@ class AIWorkflowService {
         workflowName: newWorkflowName,
         webhookUrl: `${this.baseUrl}/webhook/${newWebhookPath}`,
         webhookPath: newWebhookPath,
+        webhookMethod: newWebhookNode.parameters.httpMethod,
         prompt: aiWorkflow.prompt,
         isActive: true,
-        n8nUrl: `${this.baseUrl}/workflow/${newWorkflowId}`
+        n8nUrl: `${this.baseUrl}/workflow/${newWorkflowId}`,
+        originalId: this.templateWorkflowId
       };
 
     } catch (error) {
@@ -384,6 +420,82 @@ class AIWorkflowService {
       };
     } catch (error) {
       console.error('❌ Erro ao obter estatísticas:', error);
+      throw error;
+    }
+  }
+
+  // Listar workflows do N8N
+  async listWorkflows() {
+    try {
+      console.log('📋 Listando workflows existentes...');
+      const response = await axios.get(
+        `${this.baseUrl}/api/v1/workflows`,
+        { headers: this.headers }
+      );
+      
+      console.log('\n📊 WORKFLOWS EXISTENTES:');
+      console.log('========================');
+      response.data.data.forEach(workflow => {
+        console.log(`🆔 ${workflow.id}`);
+        console.log(`📝 ${workflow.name}`);
+        console.log(`🔗 ${this.baseUrl}/workflow/${workflow.id}`);
+        console.log(`📊 Nós: ${workflow.nodes?.length || 0}`);
+        console.log(`⚡ Ativo: ${workflow.active ? '✅' : '❌'}`);
+        console.log('---');
+      });
+
+      return response.data.data;
+    } catch (error) {
+      console.error('❌ Erro ao listar workflows:', error.response?.data || error.message);
+      throw error;
+    }
+  }
+
+  // Verificar status de um workflow específico
+  async getWorkflowStatus(workflowId) {
+    try {
+      console.log(`🔍 Verificando workflow: ${workflowId}`);
+      
+      const response = await axios.get(
+        `${this.baseUrl}/api/v1/workflows/${workflowId}`,
+        { headers: this.headers }
+      );
+      
+      const workflow = response.data;
+      console.log(`📋 Nome: ${workflow.name}`);
+      console.log(`⚡ Ativo: ${workflow.active ? '✅ Sim' : '❌ Não'}`);
+      console.log(`📊 Nós: ${workflow.nodes.length}`);
+      console.log(`🔗 URL: ${this.baseUrl}/workflow/${workflowId}`);
+      
+      // Verificar webhook
+      const webhookNode = workflow.nodes.find(node => node.type === 'n8n-nodes-base.webhook');
+      if (webhookNode) {
+        console.log(`🌐 Webhook:`);
+        console.log(`   Nome: ${webhookNode.name}`);
+        console.log(`   Path: ${webhookNode.parameters.path}`);
+        console.log(`   Método: ${webhookNode.parameters.httpMethod}`);
+        console.log(`   URL: ${this.baseUrl}/webhook/${webhookNode.parameters.path}`);
+      }
+      
+      return workflow;
+    } catch (error) {
+      console.error('❌ Erro ao verificar workflow:', error.response?.data || error.message);
+      throw error;
+    }
+  }
+
+  // Deletar workflow do N8N (método adicional)
+  async deleteWorkflowFromN8n(workflowId) {
+    try {
+      console.log(`🗑️ Deletando workflow do N8N: ${workflowId}`);
+      const response = await axios.delete(
+        `${this.baseUrl}/api/v1/workflows/${workflowId}`,
+        { headers: this.headers }
+      );
+      console.log('✅ Workflow deletado do N8N com sucesso!');
+      return response.data;
+    } catch (error) {
+      console.error('❌ Erro ao deletar workflow do N8N:', error.response?.data || error.message);
       throw error;
     }
   }
