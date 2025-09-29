@@ -88,6 +88,18 @@ class AIWorkflowService {
         console.log(`🤖 AI Agent encontrado: ${aiAgentNode.name}`);
       }
 
+      // Identificar Evolution API
+      const evolutionApiNode = originalWorkflow.nodes.find(node => 
+        node.type === 'n8n-nodes-evolution-api.evolutionApi'
+      );
+      
+      if (evolutionApiNode) {
+        console.log(`📱 Evolution API encontrado:`);
+        console.log(`   Nome: ${evolutionApiNode.name}`);
+        console.log(`   ID: ${evolutionApiNode.id}`);
+        console.log(`   ⚠️ Será substituído por um nó completamente novo`);
+      }
+
       // 3. Criar novo workflow com webhook novo e System Message vazio
       const newWorkflow = {
         name: newWorkflowName,
@@ -128,6 +140,28 @@ class AIWorkflowService {
                 }
               }
             };
+          } else if (node.type === 'n8n-nodes-evolution-api.evolutionApi') {
+            // Criar um novo nó Evolution API completamente novo
+            return {
+              parameters: {
+                resource: "messages-api",
+                instanceName: instanceName, // Usar o nome da instância selecionada
+                remoteJid: "={{ $('Webhook1').item.json.body.data.key.remoteJid }}",
+                messageText: "={{ $json.output }}",
+                options_message: {}
+              },
+              type: "n8n-nodes-evolution-api.evolutionApi",
+              typeVersion: 1,
+              position: [5168, 2224],
+              id: this.generateNewNodeId(),
+              name: "Enviar texto",
+              credentials: {
+                evolutionApi: {
+                  id: "UaHcVwwqAl5Pn8FZ",
+                  name: "Evolution account"
+                }
+              }
+            };
           }
           // Manter outros nós inalterados
           return node;
@@ -162,14 +196,24 @@ class AIWorkflowService {
         console.log('⚠️ Não foi possível ativar automaticamente');
       }
 
-      // 6. Verificar novo webhook
+      // 6. Verificar novo webhook e Evolution API
       const newWebhookNode = newWorkflow.nodes.find(node => node.type === 'n8n-nodes-base.webhook');
+      const newEvolutionApiNode = newWorkflow.nodes.find(node => node.type === 'n8n-nodes-evolution-api.evolutionApi');
+      
       console.log(`\n🌐 Novo webhook criado:`);
       console.log(`   Nome: ${newWebhookNode.name}`);
       console.log(`   ID: ${newWebhookNode.id}`);
       console.log(`   Path: ${newWebhookNode.parameters.path}`);
       console.log(`   Método: ${newWebhookNode.parameters.httpMethod}`);
       console.log(`   URL completa: ${this.baseUrl}/webhook/${newWebhookPath}`);
+
+      if (newEvolutionApiNode) {
+        console.log(`\n📱 Novo Evolution API criado:`);
+        console.log(`   Nome: ${newEvolutionApiNode.name}`);
+        console.log(`   ID: ${newEvolutionApiNode.id}`);
+        console.log(`   Instância: ${newEvolutionApiNode.parameters.instanceName}`);
+        console.log(`   Resource: ${newEvolutionApiNode.parameters.resource}`);
+      }
 
       // 7. Salvar no MongoDB
       const aiWorkflow = new AIWorkflow({
