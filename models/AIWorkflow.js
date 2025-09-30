@@ -102,7 +102,6 @@ const AIWorkflowSchema = new mongoose.Schema({
 
 // Índices para melhorar performance
 AIWorkflowSchema.index({ userId: 1 });
-AIWorkflowSchema.index({ workflowId: 1 });
 AIWorkflowSchema.index({ webhookPath: 1 });
 
 // Middleware para atualizar updatedAt

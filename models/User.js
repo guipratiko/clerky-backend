@@ -55,7 +55,6 @@ const UserSchema = new mongoose.Schema({
 });
 
 // Índices para melhorar performance
-UserSchema.index({ email: 1 });
 UserSchema.index({ status: 1 });
 
 // Hash da senha antes de salvar

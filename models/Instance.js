@@ -78,7 +78,6 @@ const InstanceSchema = new mongoose.Schema({
 
 // Índices para melhorar performance
 InstanceSchema.index({ userId: 1 });
-InstanceSchema.index({ token: 1 });
 InstanceSchema.index({ instanceName: 1, userId: 1 }, { unique: true });
 
 module.exports = mongoose.model('Instance', InstanceSchema);
