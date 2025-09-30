@@ -3,6 +3,8 @@ const http = require('http');
 const socketIo = require('socket.io');
 const cors = require('cors');
 const mongoose = require('mongoose');
+const fs = require('fs');
+const path = require('path');
 require('dotenv').config();
 
 // Importar modelos e serviços para inicialização
@@ -41,6 +43,25 @@ app.use(cors({
 }));
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
+
+// Criar diretórios de upload necessários
+const createUploadDirectories = () => {
+  const uploadDirs = [
+    'uploads',
+    'uploads/audio',
+    'uploads/mass-dispatch'
+  ];
+  
+  uploadDirs.forEach(dir => {
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+      console.log(`📁 Diretório criado: ${dir}`);
+    }
+  });
+};
+
+// Criar diretórios na inicialização
+createUploadDirectories();
 
 // Servir arquivos estáticos da pasta uploads
 app.use('/uploads', express.static('uploads'));

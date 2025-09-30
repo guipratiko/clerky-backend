@@ -215,7 +215,13 @@ router.post('/:instanceName/audio', upload.single('audio'), async (req, res) => 
 
     // Gerar nome único para o arquivo
     const fileName = `${uuidv4()}.mp3`;
-    const filePath = path.join(__dirname, '../uploads/audio', fileName);
+    const uploadsDir = path.join(__dirname, '../uploads/audio');
+    const filePath = path.join(uploadsDir, fileName);
+
+    // Garantir que o diretório existe
+    if (!fs.existsSync(uploadsDir)) {
+      fs.mkdirSync(uploadsDir, { recursive: true });
+    }
 
     // Salvar arquivo no disco
     fs.writeFileSync(filePath, audioFile.buffer);
