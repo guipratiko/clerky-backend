@@ -6,7 +6,7 @@ const aiWorkflowService = require('../services/aiWorkflowService');
 // Listar workflows de IA do usuário
 router.get('/', authenticateToken, async (req, res) => {
   try {
-    const workflows = await aiWorkflowService.getUserAIWorkflows(req.user.id);
+    const workflows = await aiWorkflowService.getUserAIWorkflows(req.user._id);
     
     res.json({
       success: true,
@@ -34,14 +34,14 @@ router.post('/', authenticateToken, async (req, res) => {
       });
     }
 
-    if (prompt && prompt.length > 2000) {
+    if (prompt && prompt.length > 5000) {
       return res.status(400).json({
         success: false,
-        error: 'Prompt muito longo (máximo 2000 caracteres)'
+        error: 'Prompt muito longo (máximo 5000 caracteres)'
       });
     }
 
-    const workflow = await aiWorkflowService.createAIWorkflow(req.user.id, instanceName, prompt);
+    const workflow = await aiWorkflowService.createAIWorkflow(req.user._id, instanceName, prompt);
 
     res.status(201).json({
       success: true,
@@ -60,7 +60,7 @@ router.post('/', authenticateToken, async (req, res) => {
 // Obter workflow específico
 router.get('/:id', authenticateToken, async (req, res) => {
   try {
-    const workflow = await aiWorkflowService.getAIWorkflow(req.params.id, req.user.id);
+    const workflow = await aiWorkflowService.getAIWorkflow(req.params.id, req.user._id);
     
     res.json({
       success: true,
@@ -87,14 +87,14 @@ router.put('/:id/prompt', authenticateToken, async (req, res) => {
       });
     }
 
-    if (prompt.length > 2000) {
+    if (prompt.length > 5000) {
       return res.status(400).json({
         success: false,
-        error: 'Prompt muito longo (máximo 2000 caracteres)'
+        error: 'Prompt muito longo (máximo 5000 caracteres)'
       });
     }
 
-    const workflow = await aiWorkflowService.updatePrompt(req.params.id, req.user.id, prompt);
+    const workflow = await aiWorkflowService.updatePrompt(req.params.id, req.user._id, prompt);
 
     res.json({
       success: true,
@@ -116,7 +116,7 @@ router.post('/:id/test', authenticateToken, async (req, res) => {
     const { message } = req.body;
     const testMessage = message || 'Teste de conectividade do workflow de IA';
     
-    const result = await aiWorkflowService.testWorkflow(req.params.id, req.user.id, testMessage);
+    const result = await aiWorkflowService.testWorkflow(req.params.id, req.user._id, testMessage);
 
     res.json({
       success: true,
@@ -144,7 +144,7 @@ router.put('/:id/toggle', authenticateToken, async (req, res) => {
       });
     }
 
-    const workflow = await aiWorkflowService.toggleWorkflow(req.params.id, req.user.id, isActive);
+    const workflow = await aiWorkflowService.toggleWorkflow(req.params.id, req.user._id, isActive);
 
     res.json({
       success: true,
@@ -163,7 +163,7 @@ router.put('/:id/toggle', authenticateToken, async (req, res) => {
 // Obter estatísticas do workflow
 router.get('/:id/stats', authenticateToken, async (req, res) => {
   try {
-    const stats = await aiWorkflowService.getWorkflowStats(req.params.id, req.user.id);
+    const stats = await aiWorkflowService.getWorkflowStats(req.params.id, req.user._id);
     
     res.json({
       success: true,
@@ -181,7 +181,7 @@ router.get('/:id/stats', authenticateToken, async (req, res) => {
 // Deletar workflow
 router.delete('/:id', authenticateToken, async (req, res) => {
   try {
-    await aiWorkflowService.deleteWorkflow(req.params.id, req.user.id);
+    await aiWorkflowService.deleteWorkflow(req.params.id, req.user._id);
 
     res.json({
       success: true,

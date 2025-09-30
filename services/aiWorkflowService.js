@@ -286,6 +286,8 @@ class AIWorkflowService {
   // Atualizar prompt do workflow
   async updatePrompt(workflowId, userId, newPrompt) {
     try {
+      console.log(`🔄 Iniciando atualização de prompt para workflow ${workflowId}, usuário ${userId}`);
+      
       const workflow = await AIWorkflow.findOne({ 
         _id: workflowId, 
         userId 
@@ -295,17 +297,24 @@ class AIWorkflowService {
         throw new Error('Workflow não encontrado ou não pertence ao usuário');
       }
 
+      console.log(`📋 Workflow encontrado: ${workflow.workflowName} (ID: ${workflow.workflowId})`);
+
       // Atualizar no N8N
+      console.log(`🌐 Buscando workflow no N8N: ${workflow.workflowId}`);
       const n8nResponse = await axios.get(
         `${this.baseUrl}/api/v1/workflows/${workflow.workflowId}`,
         { headers: this.headers }
       );
 
       const n8nWorkflow = n8nResponse.data;
+      console.log(`✅ Workflow N8N carregado com ${n8nWorkflow.nodes.length} nós`);
       
       // Encontrar e atualizar o AI Agent
+      let aiAgentFound = false;
       const updatedNodes = n8nWorkflow.nodes.map(node => {
         if (node.type === '@n8n/n8n-nodes-langchain.agent') {
+          aiAgentFound = true;
+          console.log(`🤖 Atualizando AI Agent: ${node.name}`);
           return {
             ...node,
             parameters: {
@@ -320,15 +329,29 @@ class AIWorkflowService {
         return node;
       });
 
-      // Salvar no N8N
+      if (!aiAgentFound) {
+        throw new Error('Nenhum nó AI Agent encontrado no workflow');
+      }
+
+      // Salvar no N8N - enviar apenas as propriedades necessárias
+      const updatePayload = {
+        id: n8nWorkflow.id,
+        name: n8nWorkflow.name,
+        active: n8nWorkflow.active,
+        nodes: updatedNodes,
+        connections: n8nWorkflow.connections,
+        settings: n8nWorkflow.settings,
+        staticData: n8nWorkflow.staticData,
+        tags: n8nWorkflow.tags
+      };
+
+      console.log(`📤 Enviando atualização para N8N...`);
       await axios.put(
         `${this.baseUrl}/api/v1/workflows/${workflow.workflowId}`,
-        {
-          ...n8nWorkflow,
-          nodes: updatedNodes
-        },
+        updatePayload,
         { headers: this.headers }
       );
+      console.log(`✅ Workflow atualizado no N8N com sucesso!`);
 
       // Atualizar no MongoDB
       workflow.prompt = newPrompt;
