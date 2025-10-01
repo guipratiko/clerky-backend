@@ -25,6 +25,10 @@ const MessageSchema = new mongoose.Schema({
     type: Boolean,
     required: true
   },
+  pushName: {
+    type: String,
+    default: null
+  },
   messageType: {
     type: String,
     enum: ['text', 'image', 'video', 'audio', 'document', 'sticker', 'location', 'contact', 'ptt'],

@@ -606,7 +606,8 @@ async function processMessage(instanceName, msg, isSent = false) {
       messageType,
       content,
       status: fromMe ? 'sent' : 'received',
-      timestamp: new Date((msg.messageTimestamp || msg.timestamp || Date.now()) * 1000)
+      timestamp: new Date((msg.messageTimestamp || msg.timestamp || Date.now()) * 1000),
+      pushName: msg.pushName // Capturar pushName do payload original
     });
 
     await message.save();
