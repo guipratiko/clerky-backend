@@ -377,6 +377,8 @@ router.put('/:instanceName/:contactId/block', async (req, res) => {
   }
 });
 
+// Endpoint comentado - nomes vêm apenas de CONTACTS_UPSERT e MESSAGES_UPSERT
+/*
 // Buscar nomes dos contatos usando API externa
 router.post('/get-names', async (req, res) => {
   try {
@@ -404,6 +406,7 @@ router.post('/get-names', async (req, res) => {
     });
   }
 });
+*/
 
 // Atualizar nome do contato por número de telefone
 router.put('/:instanceName/phone/:phoneNumber', async (req, res) => {

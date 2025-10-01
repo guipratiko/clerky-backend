@@ -270,7 +270,8 @@ class EvolutionApiService {
     }
   }
 
-  // Buscar nomes dos contatos usando a API externa
+  // Função comentada - nomes vêm apenas de CONTACTS_UPSERT e MESSAGES_UPSERT
+  /*
   async getContactNames(numbers) {
     try {
       // Por enquanto, retornar dados mockados para evitar erro 500
@@ -290,7 +291,6 @@ class EvolutionApiService {
       return mockResponse;
 
       // Código original comentado para evitar erro 500
-      /*
       const payload = { numbers };
       
       const response = await axios.post('https://evo.clerky.com.br/chat/whatsappNumbers/teste2', payload, {
@@ -301,7 +301,6 @@ class EvolutionApiService {
       });
 
       return response.data;
-      */
     } catch (error) {
       console.error('Erro ao buscar nomes dos contatos:', error.response?.data || error.message);
       
@@ -316,6 +315,7 @@ class EvolutionApiService {
       };
     }
   }
+  */
 
   // Definir presença
   async setPresence(instanceName, presence) {
