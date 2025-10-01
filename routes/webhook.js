@@ -499,6 +499,13 @@ async function processMessage(instanceName, msg, isSent = false) {
     const chatId = msg.key.remoteJid;
     const fromMe = msg.key.fromMe || isSent;
 
+    // Não processar mensagens enviadas pelo próprio sistema via webhook
+    // (elas já foram salvas quando enviadas)
+    if (fromMe) {
+      console.log(`⚠️  Ignorando mensagem enviada pelo sistema: ${messageId}`);
+      return;
+    }
+
     // Determinar tipo da mensagem
     let messageType = 'text';
     let content = {};
