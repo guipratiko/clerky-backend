@@ -13,6 +13,10 @@ const ChatSchema = new mongoose.Schema({
     type: String,
     required: true
   },
+  pushName: {
+    type: String,
+    default: null
+  },
   isGroup: {
     type: Boolean,
     default: false

@@ -499,10 +499,10 @@ async function processMessage(instanceName, msg, isSent = false) {
     const chatId = msg.key.remoteJid;
     const fromMe = msg.key.fromMe || isSent;
 
-    // Não processar mensagens enviadas pelo próprio sistema via webhook
-    // (elas já foram salvas quando enviadas)
-    if (fromMe) {
-      console.log(`⚠️  Ignorando mensagem enviada pelo sistema: ${messageId}`);
+    // Verificar se já existe (para evitar duplicação)
+    const existingMessage = await Message.findOne({ instanceName, messageId });
+    if (existingMessage) {
+      console.log(`⚠️  Mensagem já existe: ${messageId}`);
       return;
     }
 
@@ -736,6 +736,12 @@ async function updateChatWithNewMessage(instanceName, chatId, message) {
       lastMessage,
       lastActivity: message.timestamp
     };
+
+    // Se a mensagem tem pushName e não é enviada pelo sistema, atualizar o nome do chat
+    if (message.pushName && !message.fromMe) {
+      updateData.name = message.pushName;
+      updateData.pushName = message.pushName;
+    }
 
     // Incrementar contador de não lidas se não for de mim
     if (!message.fromMe) {
