@@ -9,6 +9,9 @@ const { v4: uuidv4 } = require('uuid');
 const fs = require('fs');
 const path = require('path');
 
+// Importar função para enviar webhook para N8N
+const { sendSentMessageToN8n } = require('./webhook');
+
 // Configurar multer para upload de arquivos
 const storage = multer.memoryStorage();
 const upload = multer({ 
@@ -110,6 +113,14 @@ router.post('/:instanceName/text', async (req, res) => {
     // Notificar via WebSocket
     socketManager.notifyNewMessage(instanceName, message);
 
+    // Enviar webhook para N8N/AI Workflows
+    try {
+      await sendSentMessageToN8n(instanceName, message);
+    } catch (error) {
+      console.error('❌ Erro ao enviar webhook para N8N:', error);
+      // Não falhar se N8N falhar
+    }
+
     res.json({
       success: true,
       data: message,
@@ -184,6 +195,14 @@ router.post('/:instanceName/media', upload.single('file'), async (req, res) => {
 
     // Notificar via WebSocket
     socketManager.notifyNewMessage(instanceName, message);
+
+    // Enviar webhook para N8N/AI Workflows
+    try {
+      await sendSentMessageToN8n(instanceName, message);
+    } catch (error) {
+      console.error('❌ Erro ao enviar webhook para N8N:', error);
+      // Não falhar se N8N falhar
+    }
 
     res.json({
       success: true,
@@ -268,6 +287,14 @@ router.post('/:instanceName/audio', upload.single('audio'), async (req, res) => 
     // Notificar via WebSocket
     socketManager.notifyNewMessage(instanceName, message);
 
+    // Enviar webhook para N8N/AI Workflows
+    try {
+      await sendSentMessageToN8n(instanceName, message);
+    } catch (error) {
+      console.error('❌ Erro ao enviar webhook para N8N:', error);
+      // Não falhar se N8N falhar
+    }
+
     // Programar limpeza do arquivo após 1 hora
     setTimeout(() => {
       try {
@@ -351,6 +378,14 @@ router.post('/:instanceName/audio-url', async (req, res) => {
     // Notificar via WebSocket
     socketManager.notifyNewMessage(instanceName, message);
 
+    // Enviar webhook para N8N/AI Workflows
+    try {
+      await sendSentMessageToN8n(instanceName, message);
+    } catch (error) {
+      console.error('❌ Erro ao enviar webhook para N8N:', error);
+      // Não falhar se N8N falhar
+    }
+
     res.json({
       success: true,
       data: message,
@@ -411,6 +446,14 @@ router.post('/:instanceName/audio-recorded', async (req, res) => {
 
     // Notificar via WebSocket
     socketManager.notifyNewMessage(instanceName, message);
+
+    // Enviar webhook para N8N/AI Workflows
+    try {
+      await sendSentMessageToN8n(instanceName, message);
+    } catch (error) {
+      console.error('❌ Erro ao enviar webhook para N8N:', error);
+      // Não falhar se N8N falhar
+    }
 
     res.json({
       success: true,

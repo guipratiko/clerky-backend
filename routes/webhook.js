@@ -955,6 +955,76 @@ router.post('/debug/save-message/:instanceName', async (req, res) => {
   }
 });
 
+// Função para enviar webhook quando mensagem é enviada pelo CRM
+async function sendSentMessageToN8n(instanceName, message) {
+  try {
+    // Buscar a instância para obter o userId
+    const instance = await Instance.findOne({ instanceName });
+    if (!instance) {
+      console.log(`📭 N8N: Instância ${instanceName} não encontrada`);
+      return;
+    }
+
+    const userId = instance.userId;
+
+    // Criar payload no formato MESSAGES_UPSERT com fromMe: true
+    const eventData = {
+      event: 'MESSAGES_UPSERT',
+      data: {
+        key: {
+          remoteJid: message.chatId,
+          fromMe: true,
+          id: message.messageId,
+          participant: message.from
+        },
+        pushName: message.pushName || null,
+        message: {
+          conversation: message.content?.text || null,
+          extendedTextMessage: message.content?.text ? {
+            text: message.content.text
+          } : null,
+          imageMessage: message.content?.media ? {
+            url: message.content.media,
+            caption: message.content.caption,
+            mimetype: message.content.mimeType
+          } : null,
+          audioMessage: message.content?.audioUrl ? {
+            url: message.content.audioUrl,
+            mimetype: message.content.mimeType,
+            seconds: message.content.seconds,
+            ptt: true
+          } : null,
+          documentMessage: message.content?.fileName ? {
+            fileName: message.content.fileName,
+            url: message.content.media,
+            mimetype: message.content.mimeType,
+            fileLength: message.content.size
+          } : null
+        },
+        messageTimestamp: Math.floor(message.timestamp.getTime() / 1000),
+        status: message.status?.toUpperCase() || 'SENT',
+        // Incluir número do contato
+        contactNumber: message.chatId?.replace('@s.whatsapp.net', '') || message.chatId
+      },
+      instanceName: instanceName,
+      timestamp: new Date().toISOString(),
+      source: 'clerky-crm'
+    };
+
+    console.log(`📡 N8N: Enviando mensagem enviada pelo CRM para N8N:`, JSON.stringify(eventData, null, 2));
+
+    // Enviar para integrações N8N
+    const result = await n8nService.sendWebhook(userId, instanceName, 'MESSAGES_UPSERT', eventData);
+    
+    if (result.sent > 0) {
+      console.log(`📡 N8N: ${result.sent}/${result.total} webhooks enviados para mensagem enviada pelo CRM`);
+    }
+  } catch (error) {
+    console.error('❌ N8N: Erro ao enviar webhook de mensagem enviada:', error);
+    // Não falhar se N8N falhar
+  }
+}
+
 // Função para enviar eventos para integrações N8N
 async function sendToN8nIntegrations(instanceName, event, data) {
   try {
@@ -1003,4 +1073,4 @@ async function sendToN8nIntegrations(instanceName, event, data) {
   }
 }
 
-module.exports = router;
+module.exports = { router, sendSentMessageToN8n };
