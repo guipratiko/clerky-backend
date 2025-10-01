@@ -595,13 +595,6 @@ async function processMessage(instanceName, msg, isSent = false) {
       }
     }
 
-    // Verificar se já existe
-    const existingMessage = await Message.findOne({ instanceName, messageId });
-    if (existingMessage) {
-      console.log(`⚠️  Mensagem já existe: ${messageId}`);
-      return;
-    }
-
     // Criar mensagem
     const message = new Message({
       instanceName,
