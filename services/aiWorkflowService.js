@@ -4,7 +4,7 @@ const AIWorkflow = require('../models/AIWorkflow');
 class AIWorkflowService {
   constructor() {
     this.baseUrl = 'https://n8n.clerky.com.br';
-    this.templateWorkflowId = 'zSdknya2qCw5b6Jg'; // Template workflow de IA
+    this.templateWorkflowId = 'IvlPPMiBsHZLkdeG'; // Template workflow de IA
     this.apiKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIwY2FkZjgxNy1lMWYyLTRkOGUtYmE3OS02ZTVkMTUwOTE5ZTgiLCJpc3MiOiJuOG4iLCJhdWQiOiJwdWJsaWMtYXBpIiwiaWF0IjoxNzU5NDQyOTI1fQ.lofY1gUdZ_nr2QSxNfr24GiKC4hJ3zdP-w1WbMx3QeM';
     this.headers = {
       'X-N8N-API-KEY': this.apiKey,
