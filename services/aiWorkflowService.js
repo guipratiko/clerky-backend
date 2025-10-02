@@ -125,7 +125,7 @@ class AIWorkflowService {
               typeVersion: 2,
               position: [448, 512],
               id: this.generateNewNodeId(),
-              name: "Webhook1",
+              name: "Webhook",
               webhookId: newWebhookPath
             };
           } else if (node.type === '@n8n/n8n-nodes-langchain.agent') {
@@ -146,7 +146,7 @@ class AIWorkflowService {
               parameters: {
                 resource: "messages-api",
                 instanceName: instanceName, // Usar o nome da instância selecionada
-                remoteJid: "={{ $('Webhook1').item.json.body.data.key.remoteJid }}",
+                remoteJid: "={{ $('Webhook').item.json.body.data.key.remoteJid }}",
                 messageText: "={{ $json.output }}",
                 options_message: {}
               },
