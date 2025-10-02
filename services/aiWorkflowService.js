@@ -5,7 +5,7 @@ class AIWorkflowService {
   constructor() {
     this.baseUrl = 'https://n8n.clerky.com.br';
     this.templateWorkflowId = 'zSdknya2qCw5b6Jg'; // Template workflow de IA
-    this.apiKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIyMmRlNDE3Yi0xNjZjLTRlYTktOTZlMy1kODY1NGYzNzdmYjQiLCJpc3MiOiJuOG4iLCJhdWQiOiJwdWJsaWMtYXBpIiwiaWF0IjoxNzU4NzcwNDcxfQ.9VOtI71lO6hoLZPOjyoiL8Oec4TtbwrHw60bOvtrVn8';
+    this.apiKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIwY2FkZjgxNy1lMWYyLTRkOGUtYmE3OS02ZTVkMTUwOTE5ZTgiLCJpc3MiOiJuOG4iLCJhdWQiOiJwdWJsaWMtYXBpIiwiaWF0IjoxNzU5NDQyOTI1fQ.lofY1gUdZ_nr2QSxNfr24GiKC4hJ3zdP-w1WbMx3QeM';
     this.headers = {
       'X-N8N-API-KEY': this.apiKey,
       'Content-Type': 'application/json'
