@@ -34,10 +34,10 @@ router.post('/', authenticateToken, async (req, res) => {
       });
     }
 
-    if (prompt && prompt.length > 5000) {
+    if (prompt && prompt.length > 500000) {
       return res.status(400).json({
         success: false,
-        error: 'Prompt muito longo (máximo 5000 caracteres)'
+        error: 'Prompt muito longo (máximo 500.000 caracteres)'
       });
     }
 
@@ -87,10 +87,10 @@ router.put('/:id/prompt', authenticateToken, async (req, res) => {
       });
     }
 
-    if (prompt.length > 5000) {
+    if (prompt.length > 500000) {
       return res.status(400).json({
         success: false,
-        error: 'Prompt muito longo (máximo 5000 caracteres)'
+        error: 'Prompt muito longo (máximo 500.000 caracteres)'
       });
     }
 

@@ -38,7 +38,7 @@ const AIWorkflowSchema = new mongoose.Schema({
   prompt: {
     type: String,
     default: '',
-    maxlength: 5000
+    maxlength: 500000
   },
   settings: {
     // Configurações específicas do workflow de IA
