@@ -8,16 +8,12 @@ class SocketManager {
     this.io = io;
     
     io.on('connection', (socket) => {
-      console.log(`🔌 Cliente conectado: ${socket.id}`);
-
       // Juntar-se a uma instância
       socket.on('join-instance', (instanceName) => {
         socket.instanceName = instanceName;
         socket.join(instanceName);
         
         this.connectedUsers.set(instanceName, socket);
-        
-        console.log(`📱 Cliente ${socket.id} juntou-se à instância: ${instanceName}`);
         
         // Notificar outros clientes da mesma instância
         socket.to(instanceName).emit('user-joined', {
@@ -30,8 +26,6 @@ class SocketManager {
       socket.on('leave-instance', (instanceName) => {
         socket.leave(instanceName);
         this.connectedUsers.delete(instanceName);
-        
-        console.log(`📱 Cliente ${socket.id} saiu da instância: ${instanceName}`);
         
         // Notificar outros clientes
         socket.to(instanceName).emit('user-left', {
@@ -66,8 +60,6 @@ class SocketManager {
 
       // Desconexão
       socket.on('disconnect', () => {
-        console.log(`🔌 Cliente desconectado: ${socket.id}`);
-        
         if (socket.instanceName) {
           this.connectedUsers.delete(socket.instanceName);
           
@@ -84,7 +76,6 @@ class SocketManager {
   emitToInstance(instanceName, event, data) {
     if (this.io) {
       this.io.to(instanceName).emit(event, data);
-      console.log(`📡 Evento '${event}' enviado para instância: ${instanceName}`);
     }
   }
 
@@ -92,7 +83,6 @@ class SocketManager {
   emitToAll(event, data) {
     if (this.io) {
       this.io.emit(event, data);
-      console.log(`📡 Evento '${event}' enviado para todos os clientes`);
     }
   }
 
@@ -100,7 +90,6 @@ class SocketManager {
   emitToUser(userId, event, data) {
     if (this.io) {
       this.io.emit(event, data);
-      console.log(`📡 Evento '${event}' enviado para usuário: ${userId}`);
     }
   }
 

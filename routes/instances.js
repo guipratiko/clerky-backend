@@ -8,13 +8,10 @@ const { authenticateToken } = require('./auth');
 // Listar todas as instâncias do usuário logado
 router.get('/', authenticateToken, async (req, res) => {
   try {
-    console.log('🔄 Sincronizando instâncias com Evolution API...');
-    
     // Buscar instâncias da Evolution API com tratamento de erro
     let evolutionInstances = [];
     try {
       evolutionInstances = await evolutionApi.fetchInstances();
-      console.log('📡 Instâncias da Evolution API:', evolutionInstances.length);
     } catch (evolutionError) {
       console.error('⚠️ Erro ao buscar instâncias da Evolution API:', evolutionError.message);
       // Continuar mesmo se falhar na Evolution API
@@ -36,14 +33,12 @@ router.get('/', authenticateToken, async (req, res) => {
           if (!localInstance) {
             // Não criar instâncias da Evolution API sem userId
             // Apenas instâncias criadas pelo usuário devem ser salvas
-            console.log(`⚠️ Instância da Evolution API sem usuário associado: ${evoInstance.name}`);
             continue;
           } else {
             // Atualizar status da instância existente
             localInstance.status = evoInstance.connectionStatus === 'open' ? 'connected' : 
                                   evoInstance.connectionStatus === 'connecting' ? 'connecting' : 'disconnected';
             localInstance.lastSeen = new Date();
-            console.log(`🔄 Instância atualizada: ${evoInstance.name} - ${localInstance.status}`);
           }
           
           await localInstance.save();
@@ -58,7 +53,6 @@ router.get('/', authenticateToken, async (req, res) => {
     const instances = await Instance.find({ userId: req.user._id })
       .populate('userId', 'name email')
       .sort({ createdAt: -1 });
-    console.log('✅ Retornando', instances.length, 'instâncias do usuário', req.user.email);
 
     res.json({
       success: true,

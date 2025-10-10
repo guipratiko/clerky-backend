@@ -55,7 +55,6 @@ const createUploadDirectories = () => {
   uploadDirs.forEach(dir => {
     if (!fs.existsSync(dir)) {
       fs.mkdirSync(dir, { recursive: true });
-      console.log(`📁 Diretório criado: ${dir}`);
     }
   });
 };
@@ -69,37 +68,26 @@ app.use('/uploads', express.static('uploads'));
 // Função de inicialização do sistema
 const initializeSystem = async () => {
   try {
-    console.log('🔄 Iniciando sincronização do sistema...');
-    
-    // 1. Buscar instâncias da Evolution API
-    console.log('📡 Buscando instâncias da Evolution API...');
     const evolutionInstances = await evolutionApi.fetchInstances();
     console.log(`📡 ${evolutionInstances.length} instâncias encontradas na Evolution API`);
 
-    // 2. Sincronizar apenas o status das instâncias existentes
+    // Sincronizar apenas o status das instâncias existentes
     let syncCount = 0;
     for (const evoInstance of evolutionInstances) {
-      // Verificar se a instância já existe no banco local
       let localInstance = await Instance.findOne({ instanceName: evoInstance.name });
       
       if (localInstance) {
-        // Atualizar apenas o status se a instância já existe
         const newStatus = evoInstance.connectionStatus === 'open' ? 'connected' : 
                          evoInstance.connectionStatus === 'connecting' ? 'connecting' : 'disconnected';
         
         if (localInstance.status !== newStatus) {
           localInstance.status = newStatus;
           await localInstance.save();
-          console.log(`🔄 Status atualizado: ${evoInstance.name} -> ${newStatus}`);
         }
         syncCount++;
-      } else {
-        // Instância da Evolution API não tem usuário associado, não criar
-        console.log(`⚠️ Instância da Evolution API sem usuário associado: ${evoInstance.name}`);
       }
     }
 
-    console.log(`✅ Sistema inicializado: ${syncCount} instâncias sincronizadas`);
     console.log('🎯 Sistema pronto para uso!');
     
   } catch (error) {
@@ -168,12 +156,10 @@ const PORT = process.env.PORT || 5000;
 
 server.listen(PORT, () => {
   console.log(`🚀 Servidor rodando na porta ${PORT}`);
-  console.log(`🌐 Health check: ${process.env.BASE_URL || `http://localhost:${PORT}`}/api/health`);
   console.log(`📡 WebSocket disponível em: ${process.env.BASE_URL?.replace('http', 'ws') || `ws://localhost:${PORT}`}`);
   
   // Iniciar agendador automático
   schedulerService.start();
-  console.log(`🕐 Agendador automático iniciado`);
 });
 
 module.exports = { app, server, io };

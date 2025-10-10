@@ -20,7 +20,6 @@ class N8nService {
         this.activeIntegrations.set(key, integration);
       });
 
-      console.log(`🔄 N8N Service: ${integrations.length} integrações ativas carregadas`);
     } catch (error) {
       console.error('❌ Erro ao carregar integrações N8N:', error);
     }

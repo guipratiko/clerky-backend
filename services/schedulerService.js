@@ -58,8 +58,6 @@ class SchedulerService {
         isActive: false // Que não estão ativos
       });
 
-      console.log(`🕐 Verificando ${scheduledDispatches.length} disparos agendados`);
-
       for (const dispatch of scheduledDispatches) {
         await this.startScheduledDispatch(dispatch);
       }
