@@ -40,6 +40,32 @@ const AIWorkflowSchema = new mongoose.Schema({
     default: '',
     maxlength: 500000
   },
+  waitTime: {
+    type: Number,
+    default: 13,
+    min: 0,
+    max: 60,
+    description: 'Tempo de espera em segundos para agrupar mensagens (0-60s)'
+  },
+  kanbanTool: {
+    enabled: {
+      type: Boolean,
+      default: false,
+      description: 'Ativar/desativar a tool de mudança de coluna no kanban'
+    },
+    authToken: {
+      type: String,
+      default: '',
+      description: 'Token de autenticação Bearer para a API de mudança de coluna'
+    },
+    targetColumn: {
+      type: Number,
+      default: 2,
+      min: 1,
+      max: 5,
+      description: 'Coluna de destino: 1=novo, 2=andamento, 3=carrinho, 4=aprovado, 5=reprovado'
+    }
+  },
   settings: {
     // Configurações específicas do workflow de IA
     model: {

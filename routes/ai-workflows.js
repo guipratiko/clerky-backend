@@ -24,7 +24,7 @@ router.get('/', authenticateToken, async (req, res) => {
 // Criar novo workflow de IA
 router.post('/', authenticateToken, async (req, res) => {
   try {
-    const { instanceName, prompt } = req.body;
+    const { instanceName, prompt, waitTime, kanbanTool } = req.body;
     
     // Validações básicas
     if (!instanceName) {
@@ -41,7 +41,28 @@ router.post('/', authenticateToken, async (req, res) => {
       });
     }
 
-    const workflow = await aiWorkflowService.createAIWorkflow(req.user._id, instanceName, prompt);
+    // Validar waitTime se fornecido
+    if (waitTime !== undefined && (waitTime < 0 || waitTime > 60)) {
+      return res.status(400).json({
+        success: false,
+        error: 'Tempo de espera deve estar entre 0 e 60 segundos'
+      });
+    }
+
+    // Validar kanbanTool se fornecido
+    if (kanbanTool && kanbanTool.targetColumn && (kanbanTool.targetColumn < 1 || kanbanTool.targetColumn > 5)) {
+      return res.status(400).json({
+        success: false,
+        error: 'Coluna de destino deve estar entre 1 e 5'
+      });
+    }
+
+    const options = {
+      waitTime,
+      kanbanTool
+    };
+
+    const workflow = await aiWorkflowService.createAIWorkflow(req.user._id, instanceName, prompt, options);
 
     res.status(201).json({
       success: true,
@@ -78,12 +99,18 @@ router.get('/:id', authenticateToken, async (req, res) => {
 // Atualizar prompt do workflow
 router.put('/:id/prompt', authenticateToken, async (req, res) => {
   try {
-    const { prompt } = req.body;
+    let { prompt } = req.body;
     
-    if (!prompt) {
+    // Permitir prompt vazio (string vazia), mas não undefined/null
+    if (prompt === undefined || prompt === null) {
+      console.log('⚠️ Prompt não fornecido, usando string vazia');
+      prompt = '';
+    }
+
+    if (typeof prompt !== 'string') {
       return res.status(400).json({
         success: false,
-        error: 'Prompt é obrigatório'
+        error: 'Prompt deve ser uma string'
       });
     }
 
@@ -103,6 +130,95 @@ router.put('/:id/prompt', authenticateToken, async (req, res) => {
     });
   } catch (error) {
     console.error('Erro ao atualizar prompt:', error);
+    console.error('Stack trace:', error.stack);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Erro interno do servidor'
+    });
+  }
+});
+
+// Atualizar tempo de espera (Wait Time)
+router.put('/:id/wait-time', authenticateToken, async (req, res) => {
+  try {
+    let { waitTime } = req.body;
+    
+    // Se não fornecido ou inválido, usar padrão
+    if (waitTime === undefined || waitTime === null) {
+      waitTime = 13;
+    }
+
+    if (waitTime < 0 || waitTime > 60) {
+      return res.status(400).json({
+        success: false,
+        error: 'Tempo de espera deve estar entre 0 e 60 segundos'
+      });
+    }
+
+    const workflow = await aiWorkflowService.updateWaitTime(req.params.id, req.user._id, waitTime);
+
+    res.json({
+      success: true,
+      data: workflow,
+      message: `Tempo de espera atualizado para ${waitTime}s com sucesso`
+    });
+  } catch (error) {
+    console.error('Erro ao atualizar Wait Time:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Erro interno do servidor'
+    });
+  }
+});
+
+// Atualizar configurações da tool de Kanban
+router.put('/:id/kanban-tool', authenticateToken, async (req, res) => {
+  try {
+    let { enabled, authToken, targetColumn } = req.body;
+    
+    // Definir valores padrão se não fornecidos
+    if (enabled === undefined || enabled === null) {
+      enabled = false;
+    }
+    
+    if (!authToken) {
+      authToken = '';
+    }
+    
+    if (!targetColumn || targetColumn < 1 || targetColumn > 5) {
+      targetColumn = 2;
+    }
+
+    // Validações
+    if (typeof enabled !== 'boolean') {
+      return res.status(400).json({
+        success: false,
+        error: 'enabled deve ser um valor booleano'
+      });
+    }
+
+    if (enabled && !authToken) {
+      return res.status(400).json({
+        success: false,
+        error: 'Token de autenticação é obrigatório quando a tool está ativada'
+      });
+    }
+
+    const kanbanToolConfig = {
+      enabled,
+      authToken,
+      targetColumn
+    };
+
+    const workflow = await aiWorkflowService.updateKanbanTool(req.params.id, req.user._id, kanbanToolConfig);
+
+    res.json({
+      success: true,
+      data: workflow,
+      message: 'Configurações da tool de Kanban atualizadas com sucesso'
+    });
+  } catch (error) {
+    console.error('Erro ao atualizar Kanban Tool:', error);
     res.status(500).json({
       success: false,
       error: error.message || 'Erro interno do servidor'

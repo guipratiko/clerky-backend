@@ -12,6 +12,18 @@ class AIWorkflowService {
     };
   }
 
+  // Mapear número da coluna para nome
+  getColumnName(columnNumber) {
+    const columns = {
+      1: 'novo',
+      2: 'andamento',
+      3: 'carrinho',
+      4: 'aprovado',
+      5: 'reprovado'
+    };
+    return columns[columnNumber] || 'andamento';
+  }
+
   // Gerar path aleatório para webhook
   generateRandomWebhookPath() {
     const timestamp = new Date().getTime();
@@ -29,9 +41,21 @@ class AIWorkflowService {
   }
 
   // Criar novo workflow de IA para o usuário
-  async createAIWorkflow(userId, instanceName, prompt = '') {
+  async createAIWorkflow(userId, instanceName, prompt = '', options = {}) {
     try {
+      // Extrair opções com valores padrão
+      const {
+        waitTime = 13,
+        kanbanTool = {
+          enabled: false,
+          authToken: '',
+          targetColumn: 2
+        }
+      } = options;
+
       console.log(`🤖 Criando workflow de IA para usuário: ${userId}, instância: ${instanceName}`);
+      console.log(`⏱️  Tempo de espera: ${waitTime}s`);
+      console.log(`📊 Kanban Tool: ${kanbanTool.enabled ? 'Ativada' : 'Desativada'}`);
       
       // Verificar se a instância pertence ao usuário
       const Instance = require('../models/Instance');
@@ -100,72 +124,128 @@ class AIWorkflowService {
         console.log(`   ⚠️ Será substituído por um nó completamente novo`);
       }
 
-      // 3. Criar novo workflow com webhook novo e System Message vazio
+      // 3. Criar nós adicionais
+      const waitNodeId = this.generateNewNodeId();
+      const waitNode = {
+        parameters: {
+          amount: waitTime
+        },
+        type: "n8n-nodes-base.wait",
+        typeVersion: 1.1,
+        position: [704, 1504],
+        id: waitNodeId,
+        name: "Wait",
+        webhookId: this.generateNewNodeId()
+      };
+
+      const kanbanToolNodeId = this.generateNewNodeId();
+      const columnName = this.getColumnName(kanbanTool.targetColumn);
+      const kanbanToolNode = {
+        parameters: {
+          toolDescription: "Atualiza a coluna kanban de um chat para organizar atendimentos",
+          method: "PUT",
+          url: `=https://back.clerky.com.br/api/chats/${instanceName}/{{ $('Edit Fields1').item.json.telefoneCliente }}/kanban-column`,
+          sendHeaders: true,
+          headerParameters: {
+            parameters: [
+              {
+                name: "Content-Type",
+                value: "application/json"
+              },
+              {
+                name: "Authorization",
+                value: `Bearer ${kanbanTool.authToken}`
+              }
+            ]
+          },
+          sendBody: true,
+          specifyBody: "json",
+          jsonBody: `={\"column\": \"${columnName}\"}`,
+          options: {}
+        },
+        type: "n8n-nodes-base.httpRequestTool",
+        typeVersion: 4.2,
+        position: [3136, 2464],
+        id: kanbanToolNodeId,
+        name: "mudar_coluna_kanban"
+      };
+
+      // Adicionar disabled se não estiver ativado
+      if (!kanbanTool.enabled) {
+        kanbanToolNode.disabled = true;
+      }
+
+      // 4. Criar novo workflow com webhook novo e System Message vazio
       const newWorkflow = {
         name: newWorkflowName,
-        nodes: originalWorkflow.nodes.map(node => {
-          if (node.type === 'n8n-nodes-base.webhook') {
-            // Criar um novo webhook completamente novo
-            return {
-              parameters: {
-                httpMethod: "POST",
-                path: newWebhookPath,
-                options: {
-                  responseHeaders: {
-                    entries: [
-                      {
-                        name: "Content-Type",
-                        value: "application/json"
-                      }
-                    ]
+        nodes: [
+          ...originalWorkflow.nodes.map(node => {
+            if (node.type === 'n8n-nodes-base.webhook') {
+              // Criar um novo webhook completamente novo
+              return {
+                parameters: {
+                  httpMethod: "POST",
+                  path: newWebhookPath,
+                  options: {
+                    responseHeaders: {
+                      entries: [
+                        {
+                          name: "Content-Type",
+                          value: "application/json"
+                        }
+                      ]
+                    }
+                  }
+                },
+                type: "n8n-nodes-base.webhook",
+                typeVersion: 2,
+                position: [448, 512],
+                id: this.generateNewNodeId(),
+                name: "Webhook",
+                webhookId: newWebhookPath
+              };
+            } else if (node.type === '@n8n/n8n-nodes-langchain.agent') {
+              // Modificar AI Agent para deixar System Message vazio
+              return {
+                ...node,
+                parameters: {
+                  ...node.parameters,
+                  options: {
+                    ...node.parameters.options,
+                    systemMessage: prompt || '' // System Message vazio ou com prompt personalizado
                   }
                 }
-              },
-              type: "n8n-nodes-base.webhook",
-              typeVersion: 2,
-              position: [448, 512],
-              id: this.generateNewNodeId(),
-              name: "Webhook",
-              webhookId: newWebhookPath
-            };
-          } else if (node.type === '@n8n/n8n-nodes-langchain.agent') {
-            // Modificar AI Agent para deixar System Message vazio
-            return {
-              ...node,
-              parameters: {
-                ...node.parameters,
-                options: {
-                  ...node.parameters.options,
-                  systemMessage: prompt || '' // System Message vazio ou com prompt personalizado
+              };
+            } else if (node.type === 'n8n-nodes-evolution-api.evolutionApi') {
+              // Criar um novo nó Evolution API completamente novo
+              return {
+                parameters: {
+                  resource: "messages-api",
+                  instanceName: instanceName, // Usar o nome da instância selecionada
+                  remoteJid: "={{ $('Webhook').item.json.body.data.key.remoteJid }}",
+                  messageText: "={{ $json.output }}",
+                  options_message: {}
+                },
+                type: "n8n-nodes-evolution-api.evolutionApi",
+                typeVersion: 1,
+                position: [5168, 2224],
+                id: this.generateNewNodeId(),
+                name: "Enviar texto",
+                credentials: {
+                  evolutionApi: {
+                    id: "UaHcVwwqAl5Pn8FZ",
+                    name: "Evolution account"
+                  }
                 }
-              }
-            };
-          } else if (node.type === 'n8n-nodes-evolution-api.evolutionApi') {
-            // Criar um novo nó Evolution API completamente novo
-            return {
-              parameters: {
-                resource: "messages-api",
-                instanceName: instanceName, // Usar o nome da instância selecionada
-                remoteJid: "={{ $('Webhook').item.json.body.data.key.remoteJid }}",
-                messageText: "={{ $json.output }}",
-                options_message: {}
-              },
-              type: "n8n-nodes-evolution-api.evolutionApi",
-              typeVersion: 1,
-              position: [5168, 2224],
-              id: this.generateNewNodeId(),
-              name: "Enviar texto",
-              credentials: {
-                evolutionApi: {
-                  id: "UaHcVwwqAl5Pn8FZ",
-                  name: "Evolution account"
-                }
-              }
-            };
-          }
-          // Manter outros nós inalterados
-          return node;
-        }),
+              };
+            }
+            // Manter outros nós inalterados
+            return node;
+          }),
+          // Adicionar nós novos
+          waitNode,
+          kanbanToolNode
+        ],
         connections: originalWorkflow.connections,
         settings: originalWorkflow.settings,
         staticData: originalWorkflow.staticData
@@ -225,11 +305,19 @@ class AIWorkflowService {
         webhookPath: newWebhookPath,
         webhookMethod: newWebhookNode.parameters.httpMethod,
         prompt: prompt || '',
+        waitTime: waitTime,
+        kanbanTool: {
+          enabled: kanbanTool.enabled,
+          authToken: kanbanTool.authToken,
+          targetColumn: kanbanTool.targetColumn
+        },
         isActive: true
       });
 
       await aiWorkflow.save();
       console.log('💾 Workflow salvo no banco de dados!');
+      console.log(`⏱️  Wait Time: ${waitTime}s`);
+      console.log(`📊 Kanban Tool: ${kanbanTool.enabled ? 'Ativada - Coluna ' + kanbanTool.targetColumn : 'Desativada'}`);
 
       return {
         id: aiWorkflow._id,
@@ -283,10 +371,105 @@ class AIWorkflowService {
     }
   }
 
-  // Atualizar prompt do workflow
-  async updatePrompt(workflowId, userId, newPrompt) {
+  // Atualizar tempo de espera (Wait node)
+  async updateWaitTime(workflowId, userId, newWaitTime) {
     try {
-      console.log(`🔄 Iniciando atualização de prompt para workflow ${workflowId}, usuário ${userId}`);
+      console.log(`🔄 Iniciando atualização de Wait Time para workflow ${workflowId}, usuário ${userId}`);
+      
+      // Validar waitTime
+      if (newWaitTime === undefined || newWaitTime === null || newWaitTime < 0 || newWaitTime > 60) {
+        console.log(`⚠️ Wait Time inválido ou não fornecido: ${newWaitTime}, usando padrão 13s`);
+        newWaitTime = 13;
+      }
+
+      const workflow = await AIWorkflow.findOne({ 
+        _id: workflowId, 
+        userId 
+      });
+      
+      if (!workflow) {
+        throw new Error('Workflow não encontrado ou não pertence ao usuário');
+      }
+
+      console.log(`📋 Workflow encontrado: ${workflow.workflowName} (ID: ${workflow.workflowId})`);
+
+      // Atualizar no N8N
+      console.log(`🌐 Buscando workflow no N8N: ${workflow.workflowId}`);
+      const n8nResponse = await axios.get(
+        `${this.baseUrl}/api/v1/workflows/${workflow.workflowId}`,
+        { headers: this.headers }
+      );
+
+      const n8nWorkflow = n8nResponse.data;
+      console.log(`✅ Workflow N8N carregado com ${n8nWorkflow.nodes.length} nós`);
+      
+      // Encontrar e atualizar o nó Wait
+      let waitNodeFound = false;
+      const updatedNodes = n8nWorkflow.nodes.map(node => {
+        if (node.type === 'n8n-nodes-base.wait' && node.name === 'Wait') {
+          waitNodeFound = true;
+          console.log(`⏱️  Atualizando nó Wait: ${node.name}`);
+          return {
+            ...node,
+            parameters: {
+              ...node.parameters,
+              amount: newWaitTime
+            }
+          };
+        }
+        return node;
+      });
+
+      if (!waitNodeFound) {
+        console.log('⚠️ Nenhum nó Wait encontrado no workflow - pulando atualização');
+        // Não lançar erro, apenas atualizar o MongoDB
+        workflow.waitTime = newWaitTime;
+        await workflow.save();
+        return workflow;
+      }
+
+      // Salvar no N8N - name é obrigatório, mas id e active são read-only
+      const updatePayload = {
+        name: n8nWorkflow.name,
+        nodes: updatedNodes,
+        connections: n8nWorkflow.connections,
+        settings: n8nWorkflow.settings || {},
+        staticData: n8nWorkflow.staticData || null
+      };
+
+      console.log(`📤 Enviando atualização Wait Time para N8N...`);
+      await axios.put(
+        `${this.baseUrl}/api/v1/workflows/${workflow.workflowId}`,
+        updatePayload,
+        { headers: this.headers }
+      );
+      console.log(`✅ Workflow atualizado no N8N com sucesso!`);
+
+      // Atualizar no MongoDB
+      workflow.waitTime = newWaitTime;
+      await workflow.save();
+
+      console.log(`✅ Wait Time atualizado com sucesso para ${newWaitTime}s!`);
+      return workflow;
+    } catch (error) {
+      console.error('❌ Erro ao atualizar Wait Time:', error);
+      throw error;
+    }
+  }
+
+  // Atualizar configurações da tool de Kanban
+  async updateKanbanTool(workflowId, userId, kanbanToolConfig) {
+    try {
+      console.log(`🔄 Iniciando atualização de Kanban Tool para workflow ${workflowId}, usuário ${userId}`);
+      
+      // Validar e definir valores padrão
+      if (!kanbanToolConfig) {
+        kanbanToolConfig = {
+          enabled: false,
+          authToken: '',
+          targetColumn: 2
+        };
+      }
       
       const workflow = await AIWorkflow.findOne({ 
         _id: workflowId, 
@@ -294,6 +477,123 @@ class AIWorkflowService {
       });
       
       if (!workflow) {
+        throw new Error('Workflow não encontrado ou não pertence ao usuário');
+      }
+
+      console.log(`📋 Workflow encontrado: ${workflow.workflowName} (ID: ${workflow.workflowId})`);
+
+      // Atualizar no N8N
+      console.log(`🌐 Buscando workflow no N8N: ${workflow.workflowId}`);
+      const n8nResponse = await axios.get(
+        `${this.baseUrl}/api/v1/workflows/${workflow.workflowId}`,
+        { headers: this.headers }
+      );
+
+      const n8nWorkflow = n8nResponse.data;
+      console.log(`✅ Workflow N8N carregado com ${n8nWorkflow.nodes.length} nós`);
+      
+      // Encontrar e atualizar o nó mudar_coluna_kanban
+      let kanbanNodeFound = false;
+      const columnName = this.getColumnName(kanbanToolConfig.targetColumn || 2);
+      
+      const updatedNodes = n8nWorkflow.nodes.map(node => {
+        if (node.type === 'n8n-nodes-base.httpRequestTool' && node.name === 'mudar_coluna_kanban') {
+          kanbanNodeFound = true;
+          console.log(`📊 Atualizando nó mudar_coluna_kanban`);
+          console.log(`   Ativado: ${kanbanToolConfig.enabled ? 'Sim' : 'Não'}`);
+          console.log(`   Coluna: ${kanbanToolConfig.targetColumn} (${columnName})`);
+          
+          const updatedNode = {
+            ...node,
+            parameters: {
+              ...node.parameters,
+              url: `=https://back.clerky.com.br/api/chats/${workflow.instanceName}/{{ $('Edit Fields1').item.json.telefoneCliente }}/kanban-column`,
+              headerParameters: {
+                parameters: [
+                  {
+                    name: "Content-Type",
+                    value: "application/json"
+                  },
+                  {
+                    name: "Authorization",
+                    value: `Bearer ${kanbanToolConfig.authToken || ''}`
+                  }
+                ]
+              },
+              jsonBody: `={\"column\": \"${columnName}\"}`
+            }
+          };
+
+          // Adicionar ou remover disabled
+          if (!kanbanToolConfig.enabled) {
+            updatedNode.disabled = true;
+          } else {
+            delete updatedNode.disabled;
+          }
+
+          return updatedNode;
+        }
+        return node;
+      });
+
+      if (!kanbanNodeFound) {
+        console.log('⚠️ Nenhum nó mudar_coluna_kanban encontrado no workflow - pulando atualização');
+        // Não lançar erro, apenas atualizar o MongoDB
+        workflow.kanbanTool = {
+          enabled: kanbanToolConfig.enabled || false,
+          authToken: kanbanToolConfig.authToken || '',
+          targetColumn: kanbanToolConfig.targetColumn || 2
+        };
+        await workflow.save();
+        return workflow;
+      }
+
+      // Salvar no N8N - name é obrigatório, mas id e active são read-only
+      const updatePayload = {
+        name: n8nWorkflow.name,
+        nodes: updatedNodes,
+        connections: n8nWorkflow.connections,
+        settings: n8nWorkflow.settings || {},
+        staticData: n8nWorkflow.staticData || null
+      };
+
+      console.log(`📤 Enviando atualização Kanban Tool para N8N...`);
+      await axios.put(
+        `${this.baseUrl}/api/v1/workflows/${workflow.workflowId}`,
+        updatePayload,
+        { headers: this.headers }
+      );
+      console.log(`✅ Workflow atualizado no N8N com sucesso!`);
+
+      // Atualizar no MongoDB
+      workflow.kanbanTool = {
+        enabled: kanbanToolConfig.enabled,
+        authToken: kanbanToolConfig.authToken,
+        targetColumn: kanbanToolConfig.targetColumn
+      };
+      await workflow.save();
+
+      console.log(`✅ Kanban Tool atualizado com sucesso!`);
+      return workflow;
+    } catch (error) {
+      console.error('❌ Erro ao atualizar Kanban Tool:', error);
+      throw error;
+    }
+  }
+
+  // Atualizar prompt do workflow
+  async updatePrompt(workflowId, userId, newPrompt) {
+    try {
+      console.log(`🔄 Iniciando atualização de prompt para workflow ${workflowId}, usuário ${userId}`);
+      console.log(`📝 Tamanho do prompt: ${newPrompt ? newPrompt.length : 0} caracteres`);
+      
+      const workflow = await AIWorkflow.findOne({ 
+        _id: workflowId, 
+        userId 
+      });
+      
+      if (!workflow) {
+        console.error(`❌ Workflow ${workflowId} não encontrado para usuário ${userId}`);
         throw new Error('Workflow não encontrado ou não pertence ao usuário');
       }
 
@@ -333,19 +633,16 @@ class AIWorkflowService {
         throw new Error('Nenhum nó AI Agent encontrado no workflow');
       }
 
-      // Salvar no N8N - enviar apenas as propriedades necessárias
+      // Salvar no N8N - name é obrigatório, mas id e active são read-only
       const updatePayload = {
-        id: n8nWorkflow.id,
         name: n8nWorkflow.name,
-        active: n8nWorkflow.active,
         nodes: updatedNodes,
         connections: n8nWorkflow.connections,
-        settings: n8nWorkflow.settings,
-        staticData: n8nWorkflow.staticData,
-        tags: n8nWorkflow.tags
+        settings: n8nWorkflow.settings || {},
+        staticData: n8nWorkflow.staticData || null
       };
 
-      console.log(`📤 Enviando atualização para N8N...`);
+      console.log(`📤 Enviando atualização Prompt para N8N...`);
       await axios.put(
         `${this.baseUrl}/api/v1/workflows/${workflow.workflowId}`,
         updatePayload,
@@ -361,6 +658,7 @@ class AIWorkflowService {
       return workflow;
     } catch (error) {
       console.error('❌ Erro ao atualizar prompt:', error);
+      console.error('Stack completo:', error.stack);
       throw error;
     }
   }
