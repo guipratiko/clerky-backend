@@ -30,8 +30,6 @@ router.get('/:instanceName', async (req, res) => {
     const chatIds = chats.map(chat => chat.chatId);
     const phoneNumbers = chats.map(chat => chat.chatId?.replace('@s.whatsapp.net', ''));
     
-    console.log('🔍 Buscando contatos para conversas:', { chatIds, phoneNumbers });
-    
     const contacts = await Contact.find({ 
       instanceName, 
       $or: [
@@ -39,8 +37,6 @@ router.get('/:instanceName', async (req, res) => {
         { phone: { $in: phoneNumbers } }
       ]
     });
-
-    console.log('📝 Contatos encontrados:', contacts.map(c => ({ contactId: c.contactId, phone: c.phone, name: c.name })));
 
     // Criar mapa de contactId/phone -> nome
     const contactNameMap = {};
@@ -53,8 +49,6 @@ router.get('/:instanceName', async (req, res) => {
         contactNameMap[`${contact.phone}@s.whatsapp.net`] = name;
       }
     });
-
-    console.log('🗺️ Mapa de nomes criado:', contactNameMap);
 
     // Aplicar nomes dos contatos às conversas
     const chatsWithNames = chats.map(chat => {
