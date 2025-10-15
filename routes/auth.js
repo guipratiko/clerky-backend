@@ -33,6 +33,27 @@ const authenticateToken = async (req, res, next) => {
       });
     }
 
+    // Verificar se o plano expirou (exceto para admins)
+    if (user.role !== 'admin' && user.planExpiresAt) {
+      const now = new Date();
+      const expiresAt = new Date(user.planExpiresAt);
+      
+      if (expiresAt < now) {
+        // Suspender usuário se o plano expirou
+        if (user.status === 'approved') {
+          user.status = 'suspended';
+          await user.save();
+        }
+        
+        return res.status(403).json({
+          success: false,
+          error: 'Seu plano expirou. Por favor, renove seu plano para continuar usando o sistema',
+          planExpired: true,
+          expiresAt: user.planExpiresAt
+        });
+      }
+    }
+
     req.user = user;
     next();
   } catch (error) {
@@ -312,6 +333,148 @@ router.get('/users', authenticateToken, requireAdmin, async (req, res) => {
     });
   } catch (error) {
     console.error('Erro ao listar usuários:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Erro interno do servidor'
+    });
+  }
+});
+
+// Verificar se o usuário pode completar o registro (usando _id)
+router.get('/complete-registration/:userId', async (req, res) => {
+  try {
+    const { userId } = req.params;
+
+    // Validar se o userId é um ObjectId válido
+    if (!userId.match(/^[0-9a-fA-F]{24}$/)) {
+      return res.status(400).json({
+        success: false,
+        error: 'ID de usuário inválido'
+      });
+    }
+
+    const user = await User.findById(userId).select('-password');
+    
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        error: 'Usuário não encontrado'
+      });
+    }
+
+    if (user.isPasswordSet) {
+      return res.status(400).json({
+        success: false,
+        error: 'Senha já foi definida para este usuário'
+      });
+    }
+
+    // Verificar se o plano está expirado
+    const isPlanExpired = user.planExpiresAt && new Date(user.planExpiresAt) < new Date();
+
+    res.json({
+      success: true,
+      data: {
+        name: user.name,
+        email: user.email,
+        plan: user.plan,
+        planExpiresAt: user.planExpiresAt,
+        isPlanExpired
+      }
+    });
+
+  } catch (error) {
+    console.error('Erro ao verificar registro:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Erro interno do servidor'
+    });
+  }
+});
+
+// Completar registro definindo a senha (usando _id)
+router.post('/complete-registration/:userId', async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { password } = req.body;
+
+    // Validação básica
+    if (!password || password.length < 6) {
+      return res.status(400).json({
+        success: false,
+        error: 'Senha deve ter pelo menos 6 caracteres'
+      });
+    }
+
+    // Validar se o userId é um ObjectId válido
+    if (!userId.match(/^[0-9a-fA-F]{24}$/)) {
+      return res.status(400).json({
+        success: false,
+        error: 'ID de usuário inválido'
+      });
+    }
+
+    const user = await User.findById(userId);
+    
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        error: 'Usuário não encontrado'
+      });
+    }
+
+    if (user.isPasswordSet) {
+      return res.status(400).json({
+        success: false,
+        error: 'Senha já foi definida para este usuário'
+      });
+    }
+
+    // Verificar se o plano está expirado
+    if (user.planExpiresAt && new Date(user.planExpiresAt) < new Date()) {
+      return res.status(403).json({
+        success: false,
+        error: 'Seu plano expirou. Por favor, renove seu plano para continuar'
+      });
+    }
+
+    // Definir senha
+    user.password = password;
+    user.isPasswordSet = true;
+    await user.save();
+
+    // Gerar token JWT
+    const token = jwt.sign(
+      { 
+        userId: user._id,
+        email: user.email,
+        role: user.role 
+      },
+      process.env.JWT_SECRET,
+      { expiresIn: '7d' }
+    );
+
+    console.log(`✅ Senha definida para: ${user.email}`);
+
+    res.json({
+      success: true,
+      message: 'Senha definida com sucesso! Você já pode fazer login.',
+      data: {
+        user: {
+          id: user._id,
+          name: user.name,
+          email: user.email,
+          role: user.role,
+          status: user.status,
+          plan: user.plan,
+          planExpiresAt: user.planExpiresAt
+        },
+        token
+      }
+    });
+
+  } catch (error) {
+    console.error('Erro ao completar registro:', error);
     res.status(500).json({
       success: false,
       error: 'Erro interno do servidor'

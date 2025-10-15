@@ -4,6 +4,7 @@ const Instance = require('../models/Instance');
 const Message = require('../models/Message');
 const Contact = require('../models/Contact');
 const Chat = require('../models/Chat');
+const User = require('../models/User');
 const socketManager = require('../utils/socketManager');
 const evolutionApi = require('../services/evolutionApi');
 const n8nService = require('../services/n8nService');
@@ -827,6 +828,212 @@ async function processReceivedAudio(audioMessage, instanceName) {
     throw error;
   }
 }
+
+// Função para normalizar telefone brasileiro
+function normalizePhoneBR(phone) {
+  if (!phone) return null;
+  
+  // Remove todos os caracteres não numéricos
+  const cleanPhone = phone.toString().replace(/\D/g, '');
+  
+  // Se não tiver 11 dígitos, retorna como está
+  if (cleanPhone.length !== 11) {
+    return cleanPhone;
+  }
+  
+  // Extrai o DDD (2 primeiros dígitos)
+  const ddd = cleanPhone.substring(0, 2);
+  
+  // DDDs de São Paulo que mantêm o nono dígito
+  const ddsSaoPaulo = ['11', '12', '13', '14', '15', '16', '17', '18', '19'];
+  
+  // Se for DDD de São Paulo, mantém os 11 dígitos
+  if (ddsSaoPaulo.includes(ddd)) {
+    return cleanPhone;
+  }
+  
+  // Para outros DDDs, verifica se tem o nono dígito extra
+  const restOfNumber = cleanPhone.substring(2); // 9 dígitos
+  
+  // Se o terceiro dígito (após DDD) for 9 e tiver 9 dígitos após o DDD
+  if (restOfNumber.length === 9 && restOfNumber[0] === '9') {
+    // Remove o primeiro 9 (nono dígito extra)
+    const normalizedPhone = ddd + restOfNumber.substring(1);
+    console.log(`📱 Telefone normalizado: ${cleanPhone} → ${normalizedPhone} (DDD ${ddd})`);
+    return normalizedPhone;
+  }
+  
+  return cleanPhone;
+}
+
+// Webhook do AppMax para pré-registro de usuários
+router.post('/appmax', async (req, res) => {
+  try {
+    const {
+      transactionId,
+      name,
+      email,
+      amount,
+      status,
+      cpf,
+      phone,
+      plan,
+      WEBHOOK_SECRET
+    } = req.body;
+
+    console.log('\n💳 WEBHOOK APPMAX RECEBIDO');
+    console.log('📦 Dados recebidos:', JSON.stringify(req.body, null, 2));
+
+    // Validar WEBHOOK_SECRET
+    if (WEBHOOK_SECRET !== process.env.WEBHOOK_SECRET) {
+      console.error('❌ WEBHOOK_SECRET inválido');
+      return res.status(401).json({
+        success: false,
+        error: 'WEBHOOK_SECRET inválido'
+      });
+    }
+
+    // Validar dados obrigatórios
+    if (!transactionId || !name || !email || !status) {
+      console.error('❌ Dados obrigatórios ausentes');
+      return res.status(400).json({
+        success: false,
+        error: 'Dados obrigatórios ausentes (transactionId, name, email, status)'
+      });
+    }
+
+    // Apenas processar se o pagamento foi aprovado
+    const statusLower = status.toLowerCase();
+    const approvedStatuses = ['approved', 'paid', 'aprovado', 'pago', 'completed', 'completo'];
+    
+    if (!approvedStatuses.includes(statusLower)) {
+      console.log('⚠️ Pagamento não aprovado. Status:', status);
+      return res.json({
+        success: true,
+        message: 'Webhook recebido, mas pagamento ainda não aprovado'
+      });
+    }
+
+    // Verificar se usuário já existe
+    let user = await User.findOne({ email: email.toLowerCase() });
+
+    if (user) {
+      // Se o usuário já existe, atualizar o plano e renovar acesso
+      console.log('👤 Usuário já existe. Renovando acesso...');
+      
+      const planExpiresAt = new Date();
+      planExpiresAt.setMonth(planExpiresAt.getMonth() + 1); // +1 mês
+
+      // Atualizar telefone normalizado e CPF se fornecidos
+      const normalizedPhone = normalizePhoneBR(phone);
+      
+      user.plan = plan || 'premium';
+      user.planExpiresAt = planExpiresAt;
+      user.appmaxTransactionId = transactionId;
+      
+      if (normalizedPhone) {
+        user.phone = normalizedPhone;
+      }
+      
+      if (cpf) {
+        user.cpf = cpf;
+        console.log(`📋 CPF atualizado: ${cpf}`);
+      }
+      
+      // Aprovar automaticamente quando há pagamento confirmado
+      // (exceto se for admin - para evitar modificações acidentais)
+      if (user.role !== 'admin' && user.status !== 'approved') {
+        const oldStatus = user.status;
+        user.status = 'approved';
+        user.approvedAt = new Date();
+        console.log(`✅ Status alterado: ${oldStatus} → approved (pagamento confirmado)`);
+      }
+
+      await user.save();
+
+      console.log(`✅ Acesso renovado para: ${email} até ${planExpiresAt.toLocaleDateString('pt-BR')}`);
+
+      // Se o usuário já tem senha definida, não precisa do link
+      const responseData = {
+        userId: user._id,
+        email: user.email,
+        plan: user.plan,
+        expiresAt: user.planExpiresAt,
+        hasPassword: user.isPasswordSet
+      };
+
+      // Se ainda não tem senha, gerar link
+      if (!user.isPasswordSet) {
+        const setupPasswordLink = `${process.env.FRONTEND_URL || 'http://localhost:3500'}/complete-registration/${user._id}`;
+        responseData.setupPasswordLink = setupPasswordLink;
+        console.log(`🔗 Link para definir senha: ${setupPasswordLink}`);
+      } else {
+        console.log(`ℹ️ Usuário já possui senha definida. Pode fazer login normalmente.`);
+      }
+
+      return res.json({
+        success: true,
+        message: user.isPasswordSet 
+          ? 'Acesso renovado com sucesso. Você já pode fazer login.'
+          : 'Acesso renovado com sucesso. Defina sua senha através do link enviado.',
+        data: responseData
+      });
+    }
+
+    // Normalizar telefone antes de salvar
+    const normalizedPhone = normalizePhoneBR(phone);
+
+    // Criar novo pré-registro
+    const planExpiresAt = new Date();
+    planExpiresAt.setMonth(planExpiresAt.getMonth() + 1); // +1 mês de acesso
+
+    user = new User({
+      name,
+      email: email.toLowerCase(),
+      cpf: cpf || null,
+      phone: normalizedPhone || null,
+      plan: plan || 'premium',
+      planExpiresAt,
+      appmaxTransactionId: transactionId,
+      status: 'approved', // Já aprovado automaticamente
+      isPasswordSet: false,
+      approvedAt: new Date()
+    });
+
+    await user.save();
+
+    // Gerar link para definir senha usando o _id do usuário
+    const setupPasswordLink = `${process.env.FRONTEND_URL || 'http://localhost:3500'}/complete-registration/${user._id}`;
+
+    console.log('✅ Pré-registro criado com sucesso!');
+    console.log('🔗 Link para definir senha:', setupPasswordLink);
+    console.log('📅 Expira em:', planExpiresAt.toLocaleDateString('pt-BR'));
+
+    // TODO: Enviar email com o link para o usuário
+    // Aqui você pode integrar com um serviço de email
+
+    res.json({
+      success: true,
+      message: 'Pré-registro criado com sucesso',
+      data: {
+        userId: user._id,
+        name: user.name,
+        email: user.email,
+        plan: user.plan,
+        expiresAt: user.planExpiresAt,
+        setupPasswordLink
+      }
+    });
+
+  } catch (error) {
+    console.error('❌ Erro ao processar webhook AppMax:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Erro interno do servidor',
+      message: error.message
+    });
+  }
+});
 
 // Webhook genérico para plataformas externas
 router.post('/external/:platform?', async (req, res) => {

@@ -16,8 +16,18 @@ const UserSchema = new mongoose.Schema({
   },
   password: {
     type: String,
-    required: true,
+    required: false, // Alterado para false para permitir pré-registro
     minlength: 6
+  },
+  cpf: {
+    type: String,
+    default: null,
+    trim: true
+  },
+  phone: {
+    type: String,
+    default: null,
+    trim: true
   },
   status: {
     type: String,
@@ -28,6 +38,23 @@ const UserSchema = new mongoose.Schema({
     type: String,
     enum: ['admin', 'user'],
     default: 'user'
+  },
+  plan: {
+    type: String,
+    enum: ['free', 'premium'],
+    default: 'free'
+  },
+  planExpiresAt: {
+    type: Date,
+    default: null
+  },
+  appmaxTransactionId: {
+    type: String,
+    default: null
+  },
+  isPasswordSet: {
+    type: Boolean,
+    default: false
   },
   approvedBy: {
     type: mongoose.Schema.Types.ObjectId,
@@ -59,8 +86,8 @@ UserSchema.index({ status: 1 });
 
 // Hash da senha antes de salvar
 UserSchema.pre('save', async function(next) {
-  // Só hash se a senha foi modificada
-  if (!this.isModified('password')) return next();
+  // Só hash se a senha foi modificada e existe
+  if (!this.isModified('password') || !this.password) return next();
   
   try {
     // Hash da senha com salt de 12

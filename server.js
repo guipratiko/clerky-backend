@@ -125,7 +125,8 @@ app.use('/api/instances', instanceRoutes);
 app.use('/api/messages', messageRoutes);
 app.use('/api/contacts', contactRoutes);
 app.use('/api/chats', chatRoutes);
-app.use('/webhook', webhookRoutes);
+app.use('/api/webhook', webhookRoutes); // Alterado de '/webhook' para '/api/webhook'
+app.use('/webhook', webhookRoutes); // Manter compatibilidade com rota antiga
 app.use('/api/external', externalApiRoutes);
 app.use('/api/mass-dispatch', massDispatchRoutes);
 app.use('/api/n8n-integration', n8nIntegrationRoutes);
@@ -152,7 +153,7 @@ app.use((req, res, next) => {
   next();
 });
 
-const PORT = process.env.PORT || 5000;
+const PORT = process.env.PORT || 4500;
 
 server.listen(PORT, () => {
   console.log(`🚀 Servidor rodando na porta ${PORT}`);
