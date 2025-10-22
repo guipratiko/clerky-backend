@@ -21,12 +21,13 @@ const UserSchema = new mongoose.Schema({
   },
   cpf: {
     type: String,
-    default: null,
-    trim: true
+    required: true,
+    trim: true,
+    unique: true
   },
   phone: {
     type: String,
-    default: null,
+    required: true,
     trim: true
   },
   status: {
@@ -51,6 +52,18 @@ const UserSchema = new mongoose.Schema({
   appmaxTransactionId: {
     type: String,
     default: null
+  },
+  trialStartedAt: {
+    type: Date,
+    default: null
+  },
+  trialEndsAt: {
+    type: Date,
+    default: null
+  },
+  isInTrial: {
+    type: Boolean,
+    default: false
   },
   isPasswordSet: {
     type: Boolean,

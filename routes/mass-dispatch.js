@@ -4,6 +4,7 @@ const multer = require('multer');
 const path = require('path');
 const fs = require('fs').promises;
 const { authenticateToken } = require('./auth');
+const { blockTrialUsers } = require('../middleware/auth');
 const MassDispatch = require('../models/MassDispatch');
 const Template = require('../models/Template');
 const massDispatchService = require('../services/massDispatchService');
@@ -63,7 +64,7 @@ const ensureUploadDir = async () => {
 ensureUploadDir();
 
 // Listar disparos do usuário
-router.get('/', authenticateToken, async (req, res) => {
+router.get('/', authenticateToken, blockTrialUsers, async (req, res) => {
   try {
     const dispatches = await massDispatchService.getUserDispatches(req.user._id);
     res.json({
@@ -80,7 +81,7 @@ router.get('/', authenticateToken, async (req, res) => {
 });
 
 // Listar disparos agendados do usuário
-router.get('/scheduled', authenticateToken, async (req, res) => {
+router.get('/scheduled', authenticateToken, blockTrialUsers, async (req, res) => {
   try {
     const dispatches = await MassDispatch.find({
       userId: req.user._id,
@@ -112,7 +113,7 @@ router.get('/scheduled', authenticateToken, async (req, res) => {
 });
 
 // Obter estatísticas do usuário
-router.get('/stats', authenticateToken, async (req, res) => {
+router.get('/stats', authenticateToken, blockTrialUsers, async (req, res) => {
   try {
     const stats = await massDispatchService.getUserStats(req.user._id);
     res.json({
@@ -129,7 +130,7 @@ router.get('/stats', authenticateToken, async (req, res) => {
 });
 
 // Criar novo disparo
-router.post('/', authenticateToken, async (req, res) => {
+router.post('/', authenticateToken, blockTrialUsers, async (req, res) => {
   try {
     const { name, instanceName, template, settings, schedule } = req.body;
 
@@ -183,7 +184,7 @@ router.post('/', authenticateToken, async (req, res) => {
 });
 
 // Upload de arquivo com números
-router.post('/:id/upload-numbers', authenticateToken, upload.single('file'), async (req, res) => {
+router.post('/:id/upload-numbers', authenticateToken, blockTrialUsers, upload.single('file'), async (req, res) => {
   try {
     const { id } = req.params;
     const { numbers: manualNumbers } = req.body;
@@ -269,7 +270,7 @@ router.post('/:id/upload-numbers', authenticateToken, upload.single('file'), asy
 });
 
 // Iniciar disparo
-router.post('/:id/start', authenticateToken, async (req, res) => {
+router.post('/:id/start', authenticateToken, blockTrialUsers, async (req, res) => {
   try {
     const { id } = req.params;
     
@@ -317,7 +318,7 @@ router.post('/:id/start', authenticateToken, async (req, res) => {
 });
 
 // Pausar disparo
-router.post('/:id/pause', authenticateToken, async (req, res) => {
+router.post('/:id/pause', authenticateToken, blockTrialUsers, async (req, res) => {
   try {
     const { id } = req.params;
     const { reason } = req.body;
@@ -347,7 +348,7 @@ router.post('/:id/pause', authenticateToken, async (req, res) => {
 });
 
 // Cancelar disparo
-router.post('/:id/cancel', authenticateToken, async (req, res) => {
+router.post('/:id/cancel', authenticateToken, blockTrialUsers, async (req, res) => {
   try {
     const { id } = req.params;
     
@@ -372,7 +373,7 @@ router.post('/:id/cancel', authenticateToken, async (req, res) => {
 });
 
 // Reenviar números pendentes
-router.post('/:id/retry-pending', authenticateToken, async (req, res) => {
+router.post('/:id/retry-pending', authenticateToken, blockTrialUsers, async (req, res) => {
   try {
     const { id } = req.params;
     
@@ -397,7 +398,7 @@ router.post('/:id/retry-pending', authenticateToken, async (req, res) => {
 });
 
 // Obter detalhes de um disparo
-router.get('/:id', authenticateToken, async (req, res) => {
+router.get('/:id', authenticateToken, blockTrialUsers, async (req, res) => {
   try {
     const { id } = req.params;
     
@@ -426,7 +427,7 @@ router.get('/:id', authenticateToken, async (req, res) => {
 });
 
 // Deletar disparo
-router.delete('/:id', authenticateToken, async (req, res) => {
+router.delete('/:id', authenticateToken, blockTrialUsers, async (req, res) => {
   try {
     const { id } = req.params;
     
@@ -465,7 +466,7 @@ router.delete('/:id', authenticateToken, async (req, res) => {
 // ===== ROTAS DE TEMPLATES =====
 
 // Listar templates do usuário
-router.get('/templates/list', authenticateToken, async (req, res) => {
+router.get('/templates/list', authenticateToken, blockTrialUsers, async (req, res) => {
   try {
     const templates = await Template.find({ userId: req.user._id })
       .sort({ createdAt: -1 });
@@ -484,7 +485,7 @@ router.get('/templates/list', authenticateToken, async (req, res) => {
 });
 
 // Criar template
-router.post('/templates', authenticateToken, upload.single('media'), async (req, res) => {
+router.post('/templates', authenticateToken, blockTrialUsers, upload.single('media'), async (req, res) => {
   try {
     const { name, description, type, text, caption, fileName } = req.body;
 
@@ -610,7 +611,7 @@ router.post('/templates', authenticateToken, upload.single('media'), async (req,
 });
 
 // Deletar template
-router.delete('/templates/:id', authenticateToken, async (req, res) => {
+router.delete('/templates/:id', authenticateToken, blockTrialUsers, async (req, res) => {
   try {
     const { id } = req.params;
     

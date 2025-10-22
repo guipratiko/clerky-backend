@@ -1,11 +1,12 @@
 const express = require('express');
 const router = express.Router();
 const n8nService = require('../services/n8nService');
-const { authenticateToken } = require('../middleware/auth');
+const { authenticateToken, blockTrialUsers } = require('../middleware/auth');
 const Instance = require('../models/Instance');
 
-// Middleware de autenticação para todas as rotas
+// Middleware de autenticação e bloqueio de trial para todas as rotas
 router.use(authenticateToken);
+router.use(blockTrialUsers);
 
 // Listar integrações do usuário
 router.get('/', async (req, res) => {

@@ -79,13 +79,13 @@ const requireAdmin = (req, res, next) => {
 // Registrar novo usuário
 router.post('/register', async (req, res) => {
   try {
-    const { name, email, password } = req.body;
+    const { name, email, password, cpf, phone } = req.body;
 
     // Validação básica
-    if (!name || !email || !password) {
+    if (!name || !email || !password || !cpf || !phone) {
       return res.status(400).json({
         success: false,
-        error: 'Nome, email e senha são obrigatórios'
+        error: 'Nome, email, senha, CPF e telefone são obrigatórios'
       });
     }
 
@@ -93,6 +93,24 @@ router.post('/register', async (req, res) => {
       return res.status(400).json({
         success: false,
         error: 'Senha deve ter pelo menos 6 caracteres'
+      });
+    }
+
+    // Validar formato do CPF (apenas números, 11 dígitos)
+    const cpfClean = cpf.replace(/\D/g, '');
+    if (cpfClean.length !== 11) {
+      return res.status(400).json({
+        success: false,
+        error: 'CPF inválido. Deve conter 11 dígitos'
+      });
+    }
+
+    // Validar formato do telefone (mínimo 10 dígitos)
+    const phoneClean = phone.replace(/\D/g, '');
+    if (phoneClean.length < 10 || phoneClean.length > 11) {
+      return res.status(400).json({
+        success: false,
+        error: 'Telefone inválido. Deve conter DDD + número (10 ou 11 dígitos)'
       });
     }
 
@@ -105,26 +123,47 @@ router.post('/register', async (req, res) => {
       });
     }
 
-    // Criar usuário
+    // Verificar se CPF já existe
+    const existingCpf = await User.findOne({ cpf: cpfClean });
+    if (existingCpf) {
+      return res.status(400).json({
+        success: false,
+        error: 'CPF já cadastrado no sistema'
+      });
+    }
+
+    // Criar usuário com 7 dias de trial e aprovação automática
+    const trialStart = new Date();
+    const trialEnd = new Date();
+    trialEnd.setDate(trialEnd.getDate() + 7); // 7 dias de teste
+
     const user = new User({
       name,
       email: email.toLowerCase(),
       password,
-      status: 'pending' // Aguardando aprovação
+      cpf: cpfClean,
+      phone: phoneClean,
+      status: 'approved', // Aprovado automaticamente para trial
+      isInTrial: true,
+      trialStartedAt: trialStart,
+      trialEndsAt: trialEnd
     });
 
     await user.save();
 
-    console.log(`📝 Novo usuário registrado: ${email} - Aguardando aprovação`);
+    console.log(`📝 Novo usuário registrado: ${email} - Aprovado com 7 dias de trial`);
 
     res.status(201).json({
       success: true,
-      message: 'Usuário registrado com sucesso. Aguarde aprovação do administrador.',
+      message: 'Conta criada com sucesso! 🎉 Você tem 7 dias de teste grátis. Faça login para começar.',
       data: {
         id: user._id,
         name: user.name,
         email: user.email,
-        status: user.status
+        status: user.status,
+        isInTrial: user.isInTrial,
+        trialEndsAt: user.trialEndsAt,
+        trialDays: 7
       }
     });
 
@@ -168,14 +207,7 @@ router.post('/login', async (req, res) => {
       });
     }
 
-    // Verificar se usuário está aprovado
-    if (user.status === 'pending') {
-      return res.status(403).json({
-        success: false,
-        error: 'Sua conta ainda está aguardando aprovação do administrador'
-      });
-    }
-
+    // Verificar status da conta
     if (user.status === 'rejected') {
       return res.status(403).json({
         success: false,
@@ -186,7 +218,34 @@ router.post('/login', async (req, res) => {
     if (user.status === 'suspended') {
       return res.status(403).json({
         success: false,
-        error: 'Sua conta está suspensa. Entre em contato com o administrador'
+        error: 'Sua conta está suspensa. Para continuar usando o sistema, você precisa adquirir uma assinatura. Entre em contato com o administrador.'
+      });
+    }
+
+    // Verificar se trial expirou (apenas para usuários não-admin)
+    if (user.role !== 'admin' && user.isInTrial && user.trialEndsAt) {
+      const now = new Date();
+      const trialEnd = new Date(user.trialEndsAt);
+      
+      if (now > trialEnd) {
+        // Trial expirou - suspender conta
+        user.status = 'suspended';
+        user.isInTrial = false;
+        await user.save();
+        
+        return res.status(403).json({
+          success: false,
+          error: 'Seu período de teste de 7 dias expirou. Para continuar usando o sistema, você precisa adquirir uma assinatura. Entre em contato com o administrador.',
+          trialExpired: true
+        });
+      }
+    }
+
+    // Permitir login mesmo com status 'pending' se estiver em trial válido
+    if (user.status === 'pending' && (!user.isInTrial || !user.trialEndsAt)) {
+      return res.status(403).json({
+        success: false,
+        error: 'Sua conta ainda está aguardando aprovação do administrador'
       });
     }
 
@@ -233,6 +292,10 @@ router.post('/login', async (req, res) => {
 
 // Obter dados do usuário atual
 router.get('/me', authenticateToken, (req, res) => {
+  const now = new Date();
+  const isTrialExpired = req.user.trialEndsAt && new Date(req.user.trialEndsAt) < now;
+  const isTrialActive = req.user.isInTrial && !isTrialExpired;
+  
   res.json({
     success: true,
     data: {
@@ -242,7 +305,11 @@ router.get('/me', authenticateToken, (req, res) => {
         email: req.user.email,
         role: req.user.role,
         status: req.user.status,
-        lastLogin: req.user.lastLogin
+        lastLogin: req.user.lastLogin,
+        isInTrial: isTrialActive,
+        trialEndsAt: req.user.trialEndsAt,
+        trialStartedAt: req.user.trialStartedAt,
+        isTrialExpired: isTrialExpired
       }
     }
   });
