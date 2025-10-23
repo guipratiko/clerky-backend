@@ -352,6 +352,12 @@ class MassDispatchService {
           sequenceStructure: processedTemplate.sequence
         });
         
+        // Debug: verificar o que está sendo passado para sendMessageSequence
+        console.log(`🔍 Debug antes de sendMessageSequence:`, {
+          processedSequenceFirstMessage: processedTemplate.sequence?.messages?.[0]?.content?.text,
+          processedSequenceStructure: processedTemplate.sequence
+        });
+        
         // Enviar sequência de mensagens
         result = await this.sendMessageSequence(dispatch.instanceName, number, processedTemplate.sequence, variables, defaultName);
         console.log(`🎭 Sequência enviada para ${number}:`, {
@@ -464,11 +470,12 @@ class MassDispatchService {
    * @returns {Array} - Resultados das mensagens enviadas
    */
   async sendMessageSequence(instanceName, number, sequence, variables = {}, defaultName = 'Cliente') {
-    console.log(`🔍 Debug sendMessageSequence:`, {
+    console.log(`🔍 Debug sendMessageSequence recebido:`, {
       instanceName,
       number,
       hasSequence: !!sequence,
       sequenceMessages: sequence?.messages?.length || 0,
+      firstMessageText: sequence?.messages?.[0]?.content?.text,
       sequenceStructure: sequence
     });
     
@@ -492,24 +499,25 @@ class MassDispatchService {
     for (let i = 0; i < sortedMessages.length; i++) {
       const message = sortedMessages[i];
       
-      // Extrair dados corretos do objeto Mongoose
+      // Extrair dados corretos do objeto Mongoose DocumentArray
       const messageData = message._doc || message;
       const order = messageData.order;
       const type = messageData.type;
       const delay = messageData.delay;
-      const content = messageData.content;
+      const content = message.content; // Usar o conteúdo processado
       
-      console.log(`🔍 Debug mensagem ${i}:`, {
+      console.log(`🔍 Debug mensagem ${i} (processada):`, {
         messageOrder: order,
         messageType: type,
         messageDelay: delay,
         messageContent: content,
-        rawMessage: messageData
+        messageData: messageData,
+        rawMessage: message
       });
       
       // Validar se a mensagem tem os campos obrigatórios
       if (!order || !type) {
-        console.log(`❌ Mensagem ${i} inválida:`, messageData);
+        console.log(`❌ Mensagem ${i} inválida:`, message);
         results.push({
           order: order || i + 1,
           type: type || 'unknown',
@@ -526,6 +534,10 @@ class MassDispatchService {
         
         switch (type) {
           case 'text':
+            console.log(`🔍 Enviando texto processado:`, {
+              originalText: content.text,
+              processedText: content.text
+            });
             result = await evolutionApi.sendTextMessage(
               instanceName,
               number,
@@ -543,6 +555,10 @@ class MassDispatchService {
             break;
 
           case 'image_caption':
+            console.log(`🔍 Enviando imagem com caption processado:`, {
+              originalCaption: content.caption,
+              processedCaption: content.caption
+            });
             result = await evolutionApi.sendMedia(
               instanceName,
               number,
@@ -572,6 +588,10 @@ class MassDispatchService {
             break;
 
           case 'file_caption':
+            console.log(`🔍 Enviando arquivo com caption processado:`, {
+              originalCaption: content.caption,
+              processedCaption: content.caption
+            });
             result = await evolutionApi.sendMedia(
               instanceName,
               number,

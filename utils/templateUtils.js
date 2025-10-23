@@ -73,6 +73,13 @@ function processTemplate(template, variables = {}, defaultName = 'Cliente') {
     return template;
   }
 
+  console.log('🔍 Debug processTemplate chamado:', {
+    templateType: template.type,
+    hasSequence: !!template.sequence,
+    variables: variables,
+    defaultName: defaultName
+  });
+
   const processedTemplate = { ...template };
 
   // Se for template de sequência
@@ -88,6 +95,13 @@ function processTemplate(template, variables = {}, defaultName = 'Cliente') {
         }
       }))
     };
+    
+    console.log('🔍 Debug processTemplate resultado sequência:', {
+      originalFirstMessage: template.sequence.messages[0]?.content?.text,
+      processedFirstMessage: processedTemplate.sequence.messages[0]?.content?.text,
+      changed: template.sequence.messages[0]?.content?.text !== processedTemplate.sequence.messages[0]?.content?.text
+    });
+    
     return processedTemplate;
   }
 
