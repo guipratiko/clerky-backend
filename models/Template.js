@@ -17,9 +17,10 @@ const templateSchema = new mongoose.Schema({
   },
   type: {
     type: String,
-    enum: ['text', 'image', 'image_caption', 'audio', 'file', 'file_caption'],
+    enum: ['text', 'image', 'image_caption', 'audio', 'file', 'file_caption', 'sequence'],
     required: true
   },
+  // Para templates simples (compatibilidade)
   content: {
     text: {
       type: String,
@@ -52,6 +53,35 @@ const templateSchema = new mongoose.Schema({
       }
     }
   },
+  // Para templates de sequência
+  sequence: {
+    messages: [{
+      order: {
+        type: Number,
+        required: true
+      },
+      type: {
+        type: String,
+        enum: ['text', 'image', 'image_caption', 'audio', 'file', 'file_caption'],
+        required: true
+      },
+      content: {
+        text: String,
+        media: String,
+        mediaType: String,
+        fileName: String,
+        caption: String
+      },
+      delay: {
+        type: Number,
+        default: 5 // Delay em segundos entre mensagens
+      }
+    }],
+    totalDelay: {
+      type: Number,
+      default: 0 // Delay total da sequência
+    }
+  },
   variables: [{
     name: String, // ex: {{nome}}, {{empresa}}
     description: String,
@@ -78,7 +108,49 @@ templateSchema.index({ userId: 1, name: 1 });
 
 // Método para renderizar template com variáveis
 templateSchema.methods.render = function(variables = {}) {
-  let renderedContent = { ...this.content };
+  if (this.type === 'sequence') {
+    // Renderizar sequência de mensagens
+    const renderedSequence = {
+      type: 'sequence',
+      sequence: {
+        messages: this.sequence.messages.map(msg => ({
+          order: msg.order,
+          type: msg.type,
+          delay: msg.delay,
+          content: this.renderMessageContent(msg.content, variables)
+        })),
+        totalDelay: this.sequence.totalDelay
+      }
+    };
+    return renderedSequence;
+  } else {
+    // Renderizar template simples
+    let renderedContent = { ...this.content };
+    
+    // Substituir variáveis no texto
+    if (renderedContent.text) {
+      renderedContent.text = renderedContent.text.replace(/\{\{(\w+)\}\}/g, (match, key) => {
+        return variables[key] || match;
+      });
+    }
+    
+    // Substituir variáveis na caption
+    if (renderedContent.caption) {
+      renderedContent.caption = renderedContent.caption.replace(/\{\{(\w+)\}\}/g, (match, key) => {
+        return variables[key] || match;
+      });
+    }
+    
+    return {
+      type: this.type,
+      content: renderedContent
+    };
+  }
+};
+
+// Método auxiliar para renderizar conteúdo de mensagem
+templateSchema.methods.renderMessageContent = function(content, variables = {}) {
+  const renderedContent = { ...content };
   
   // Substituir variáveis no texto
   if (renderedContent.text) {
@@ -94,10 +166,7 @@ templateSchema.methods.render = function(variables = {}) {
     });
   }
   
-  return {
-    type: this.type,
-    content: renderedContent
-  };
+  return renderedContent;
 };
 
 // Método para incrementar uso

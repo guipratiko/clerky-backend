@@ -171,11 +171,43 @@ router.post('/', authenticateToken, blockTrialUsers, async (req, res) => {
       };
     }
 
+    // Processar template baseado no tipo
+    let processedTemplate = template;
+    
+    console.log(`🔍 Debug criação disparo - Template recebido:`, {
+      templateType: template?.type,
+      hasSequence: !!template?.sequence,
+      sequenceMessages: template?.sequence?.messages?.length || 0,
+      templateStructure: template
+    });
+    
+    if (template.type === 'sequence') {
+      // Para templates de sequência, garantir que a estrutura está correta
+      processedTemplate = {
+        type: 'sequence',
+        sequence: {
+          messages: template.sequence?.messages || [],
+          totalDelay: template.sequence?.totalDelay || 0
+        }
+      };
+      
+      console.log(`🔍 Debug criação disparo - Template processado:`, {
+        processedType: processedTemplate.type,
+        processedSequence: processedTemplate.sequence
+      });
+    } else {
+      // Para templates simples, manter estrutura original
+      processedTemplate = {
+        type: template.type,
+        content: template.content || {}
+      };
+    }
+
     const dispatchData = {
       userId: req.user._id,
       instanceName,
       name,
-      template,
+      template: processedTemplate,
       settings: {
         speed: settings?.speed || 'normal',
         validateNumbers: settings?.validateNumbers !== false,
@@ -499,6 +531,111 @@ router.get('/templates/list', authenticateToken, blockTrialUsers, async (req, re
     });
   } catch (error) {
     console.error('Erro ao listar templates:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Erro interno do servidor'
+    });
+  }
+});
+
+// Criar template de sequência
+router.post('/templates/sequence', authenticateToken, blockTrialUsers, upload.array('media', 10), async (req, res) => {
+  try {
+    console.log('🔍 Debug recebido - Template sequência:', {
+      body: req.body,
+      files: req.files,
+      hasSequence: !!req.body.sequence
+    });
+
+    const { name, description, sequence } = req.body;
+
+    // Parse da sequência se for string
+    let parsedSequence = sequence;
+    if (typeof sequence === 'string') {
+      try {
+        parsedSequence = JSON.parse(sequence);
+      } catch (error) {
+        console.error('❌ Erro ao fazer parse da sequência:', error);
+        return res.status(400).json({
+          success: false,
+          error: 'Formato inválido da sequência de mensagens'
+        });
+      }
+    }
+
+    if (!name || !parsedSequence || !parsedSequence.messages) {
+      console.log('❌ Validação falhou:', {
+        hasName: !!name,
+        hasSequence: !!parsedSequence,
+        hasMessages: !!parsedSequence?.messages
+      });
+      return res.status(400).json({
+        success: false,
+        error: 'Nome e sequência de mensagens são obrigatórios'
+      });
+    }
+
+    // Processar arquivos de mídia se existirem
+    const mediaFiles = req.files || [];
+    let mediaIndex = 0;
+
+    const templateData = {
+      userId: req.user._id,
+      name,
+      description,
+      type: 'sequence',
+      sequence: {
+        messages: parsedSequence.messages.map(msg => {
+          const messageData = {
+            order: msg.order,
+            type: msg.type,
+            delay: msg.delay || 5,
+            content: {
+              text: msg.content?.text || '',
+              caption: msg.content?.caption || ''
+            }
+          };
+
+          // Se a mensagem precisa de mídia e há arquivos disponíveis
+          if (['image', 'image_caption', 'audio', 'file', 'file_caption'].includes(msg.type) && mediaFiles[mediaIndex]) {
+            const file = mediaFiles[mediaIndex];
+            messageData.content.media = `${process.env.BASE_URL}/uploads/mass-dispatch/${file.filename}`;
+            messageData.content.mediaType = msg.type.includes('image') ? 'image' : 
+                                           msg.type.includes('audio') ? 'audio' : 'document';
+            messageData.content.fileName = file.originalname;
+            mediaIndex++;
+          }
+
+          return messageData;
+        }),
+        totalDelay: parsedSequence.messages.reduce((total, msg) => total + (msg.delay || 5), 0)
+      }
+    };
+
+    console.log(`🔍 Debug criação template sequência:`, {
+      templateName: name,
+      messagesCount: parsedSequence.messages.length,
+      messagesStructure: parsedSequence.messages,
+      templateData: templateData
+    });
+
+    const template = new Template(templateData);
+    await template.save();
+
+    console.log(`✅ Template de sequência salvo:`, {
+      templateId: template._id,
+      templateName: template.name,
+      messagesCount: template.sequence.messages.length,
+      firstMessage: template.sequence.messages[0]
+    });
+
+    res.json({
+      success: true,
+      data: template
+    });
+
+  } catch (error) {
+    console.error('Erro ao criar template de sequência:', error);
     res.status(500).json({
       success: false,
       error: error.message || 'Erro interno do servidor'

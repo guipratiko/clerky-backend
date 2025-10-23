@@ -17,7 +17,7 @@ const massDispatchSchema = new mongoose.Schema({
   template: {
     type: {
       type: String,
-      enum: ['text', 'image', 'image_caption', 'audio', 'file', 'file_caption'],
+      enum: ['text', 'image', 'image_caption', 'audio', 'file', 'file_caption', 'sequence'],
       required: true
     },
     content: {
@@ -25,6 +25,34 @@ const massDispatchSchema = new mongoose.Schema({
       media: String, // URL ou base64
       fileName: String,
       caption: String
+    },
+    // Para templates de sequência
+    sequence: {
+      messages: [{
+        order: {
+          type: Number,
+          required: true
+        },
+        type: {
+          type: String,
+          enum: ['text', 'image', 'image_caption', 'audio', 'file', 'file_caption'],
+          required: true
+        },
+        content: {
+          text: String,
+          media: String,
+          fileName: String,
+          caption: String
+        },
+        delay: {
+          type: Number,
+          default: 5
+        }
+      }],
+      totalDelay: {
+        type: Number,
+        default: 0
+      }
     }
   },
   numbers: [{

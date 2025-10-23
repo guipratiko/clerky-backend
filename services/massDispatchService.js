@@ -316,6 +316,14 @@ class MassDispatchService {
     const { template } = dispatch;
     const { formatted: number, contactName, original } = numberData;
 
+    console.log(`🔍 Debug sendMessage:`, {
+      dispatchId: dispatch._id,
+      templateType: template?.type,
+      hasTemplate: !!template,
+      templateStructure: template,
+      number: number
+    });
+
     try {
       let result;
 
@@ -334,73 +342,93 @@ class MassDispatchService {
 
       // Processar template com variáveis (sempre ativo)
       const processedTemplate = templateUtils.processTemplate(template, variables, defaultName);
-      console.log(`🎭 Template personalizado para ${number}:`, {
-        originalText: template.content?.text,
-        processedText: processedTemplate.content?.text,
-        contactName: contactName || 'N/A',
-        defaultName: defaultName
-      });
+      
+      if (processedTemplate.type === 'sequence') {
+        // Debug: verificar estrutura da sequência
+        console.log(`🔍 Debug sequência para ${number}:`, {
+          templateType: processedTemplate.type,
+          hasSequence: !!processedTemplate.sequence,
+          sequenceMessages: processedTemplate.sequence?.messages?.length || 0,
+          sequenceStructure: processedTemplate.sequence
+        });
+        
+        // Enviar sequência de mensagens
+        result = await this.sendMessageSequence(dispatch.instanceName, number, processedTemplate.sequence, variables, defaultName);
+        console.log(`🎭 Sequência enviada para ${number}:`, {
+          messagesCount: processedTemplate.sequence?.messages?.length || 0,
+          contactName: contactName || 'N/A',
+          defaultName: defaultName
+        });
+      } else {
+        // Enviar mensagem simples
+        console.log(`🎭 Template personalizado para ${number}:`, {
+          originalText: template.content?.text,
+          processedText: processedTemplate.content?.text,
+          contactName: contactName || 'N/A',
+          defaultName: defaultName
+        });
 
-      switch (processedTemplate.type) {
-        case 'text':
-          result = await evolutionApi.sendTextMessage(
-            dispatch.instanceName,
-            number,
-            processedTemplate.content.text
-          );
-          break;
+        switch (processedTemplate.type) {
+          case 'text':
+            result = await evolutionApi.sendTextMessage(
+              dispatch.instanceName,
+              number,
+              processedTemplate.content.text
+            );
+            break;
 
-        case 'image':
-          result = await evolutionApi.sendMedia(
-            dispatch.instanceName,
-            number,
-            processedTemplate.content.media,
-            'image'
-          );
-          break;
+          case 'image':
+            result = await evolutionApi.sendMedia(
+              dispatch.instanceName,
+              number,
+              processedTemplate.content.media,
+              'image'
+            );
+            break;
 
-        case 'image_caption':
-          result = await evolutionApi.sendMedia(
-            dispatch.instanceName,
-            number,
-            processedTemplate.content.media,
-            'image',
-            processedTemplate.content.caption
-          );
-          break;
+          case 'image_caption':
+            result = await evolutionApi.sendMedia(
+              dispatch.instanceName,
+              number,
+              processedTemplate.content.media,
+              'image',
+              processedTemplate.content.caption
+            );
+            break;
 
-        case 'audio':
-          result = await evolutionApi.sendAudioUrl(
-            dispatch.instanceName,
-            number,
-            processedTemplate.content.media
-          );
-          break;
+          case 'audio':
+            result = await evolutionApi.sendAudioUrl(
+              dispatch.instanceName,
+              number,
+              processedTemplate.content.media
+            );
+            break;
 
-        case 'file':
-          result = await evolutionApi.sendMedia(
-            dispatch.instanceName,
-            number,
-            processedTemplate.content.media,
-            'document',
-            '',
-            processedTemplate.content.fileName
-          );
-          break;
+          case 'file':
+            result = await evolutionApi.sendMedia(
+              dispatch.instanceName,
+              number,
+              processedTemplate.content.media,
+              'document',
+              '',
+              processedTemplate.content.fileName
+            );
+            break;
 
-        case 'file_caption':
-          result = await evolutionApi.sendMedia(
-            dispatch.instanceName,
-            number,
-            processedTemplate.content.media,
-            'document',
-            processedTemplate.content.caption,
-            processedTemplate.content.fileName
-          );
-          break;
+          case 'file_caption':
+            result = await evolutionApi.sendMedia(
+              dispatch.instanceName,
+              number,
+              processedTemplate.content.media,
+              'document',
+              processedTemplate.content.caption,
+              processedTemplate.content.fileName
+            );
+            break;
 
-        default:
-          throw new Error(`Tipo de template não suportado: ${processedTemplate.type}`);
+          default:
+            throw new Error(`Tipo de template não suportado: ${processedTemplate.type}`);
+        }
       }
 
       // Validar resposta da API
@@ -424,6 +452,176 @@ class MassDispatchService {
       // Re-throw com contexto adicional
       throw new Error(`Falha ao enviar ${template.type} para ${number}: ${error.message}`);
     }
+  }
+
+  /**
+   * Envia sequência de mensagens para um número
+   * @param {string} instanceName - Nome da instância
+   * @param {string} number - Número de destino
+   * @param {object} sequence - Sequência de mensagens
+   * @param {object} variables - Variáveis para substituição
+   * @param {string} defaultName - Nome padrão
+   * @returns {Array} - Resultados das mensagens enviadas
+   */
+  async sendMessageSequence(instanceName, number, sequence, variables = {}, defaultName = 'Cliente') {
+    console.log(`🔍 Debug sendMessageSequence:`, {
+      instanceName,
+      number,
+      hasSequence: !!sequence,
+      sequenceMessages: sequence?.messages?.length || 0,
+      sequenceStructure: sequence
+    });
+    
+    const results = [];
+    
+    // Verificar se sequence e messages existem
+    if (!sequence || !sequence.messages || sequence.messages.length === 0) {
+      console.log(`❌ Sequência vazia ou inválida para ${number}`);
+      return {
+        success: false,
+        messages: [],
+        totalSent: 0,
+        totalFailed: 0,
+        error: 'Sequência vazia ou inválida'
+      };
+    }
+    
+    // Ordenar mensagens por ordem
+    const sortedMessages = sequence.messages.sort((a, b) => a.order - b.order);
+    
+    for (let i = 0; i < sortedMessages.length; i++) {
+      const message = sortedMessages[i];
+      
+      // Extrair dados corretos do objeto Mongoose
+      const messageData = message._doc || message;
+      const order = messageData.order;
+      const type = messageData.type;
+      const delay = messageData.delay;
+      const content = messageData.content;
+      
+      console.log(`🔍 Debug mensagem ${i}:`, {
+        messageOrder: order,
+        messageType: type,
+        messageDelay: delay,
+        messageContent: content,
+        rawMessage: messageData
+      });
+      
+      // Validar se a mensagem tem os campos obrigatórios
+      if (!order || !type) {
+        console.log(`❌ Mensagem ${i} inválida:`, messageData);
+        results.push({
+          order: order || i + 1,
+          type: type || 'unknown',
+          success: false,
+          error: `Mensagem inválida: order=${order}, type=${type}`
+        });
+        continue;
+      }
+      
+      try {
+        console.log(`📤 Enviando mensagem ${order} de ${sortedMessages.length} para ${number}`);
+        
+        let result;
+        
+        switch (type) {
+          case 'text':
+            result = await evolutionApi.sendTextMessage(
+              instanceName,
+              number,
+              content.text
+            );
+            break;
+
+          case 'image':
+            result = await evolutionApi.sendMedia(
+              instanceName,
+              number,
+              content.media,
+              'image'
+            );
+            break;
+
+          case 'image_caption':
+            result = await evolutionApi.sendMedia(
+              instanceName,
+              number,
+              content.media,
+              'image',
+              content.caption
+            );
+            break;
+
+          case 'audio':
+            result = await evolutionApi.sendAudioUrl(
+              instanceName,
+              number,
+              content.media
+            );
+            break;
+
+          case 'file':
+            result = await evolutionApi.sendMedia(
+              instanceName,
+              number,
+              content.media,
+              'document',
+              '',
+              content.fileName
+            );
+            break;
+
+          case 'file_caption':
+            result = await evolutionApi.sendMedia(
+              instanceName,
+              number,
+              content.media,
+              'document',
+              content.caption,
+              content.fileName
+            );
+            break;
+
+          default:
+            throw new Error(`Tipo de mensagem não suportado: ${type}`);
+        }
+
+        results.push({
+          order: order,
+          type: type,
+          success: true,
+          result: result
+        });
+
+        console.log(`✅ Mensagem ${order} enviada com sucesso para ${number}`);
+
+        // Aguardar delay antes da próxima mensagem (exceto na última)
+        if (i < sortedMessages.length - 1 && delay > 0) {
+          console.log(`⏱️ Aguardando ${delay} segundos antes da próxima mensagem...`);
+          await new Promise(resolve => setTimeout(resolve, delay * 1000));
+        }
+
+      } catch (error) {
+        console.error(`❌ Erro ao enviar mensagem ${order} para ${number}:`, error.message);
+        
+        results.push({
+          order: order,
+          type: type,
+          success: false,
+          error: error.message
+        });
+
+        // Se uma mensagem falhar, continuar com as próximas
+        continue;
+      }
+    }
+
+    return {
+      success: results.some(r => r.success),
+      messages: results,
+      totalSent: results.filter(r => r.success).length,
+      totalFailed: results.filter(r => !r.success).length
+    };
   }
 
   /**

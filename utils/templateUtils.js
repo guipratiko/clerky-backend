@@ -75,6 +75,23 @@ function processTemplate(template, variables = {}, defaultName = 'Cliente') {
 
   const processedTemplate = { ...template };
 
+  // Se for template de sequência
+  if (processedTemplate.type === 'sequence' && processedTemplate.sequence) {
+    processedTemplate.sequence = {
+      ...processedTemplate.sequence,
+      messages: processedTemplate.sequence.messages.map(msg => ({
+        ...msg,
+        content: {
+          ...msg.content,
+          text: msg.content.text ? replaceTemplateVariables(msg.content.text, variables, defaultName) : '',
+          caption: msg.content.caption ? replaceTemplateVariables(msg.content.caption, variables, defaultName) : ''
+        }
+      }))
+    };
+    return processedTemplate;
+  }
+
+  // Processar template simples
   // Processar texto se existir
   if (processedTemplate.content && processedTemplate.content.text) {
     processedTemplate.content.text = replaceTemplateVariables(
