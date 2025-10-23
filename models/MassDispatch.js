@@ -80,7 +80,7 @@ const massDispatchSchema = new mongoose.Schema({
     personalization: {
       enabled: {
         type: Boolean,
-        default: false
+        default: true
       },
       defaultName: {
         type: String,

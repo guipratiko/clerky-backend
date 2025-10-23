@@ -182,7 +182,7 @@ router.post('/', authenticateToken, blockTrialUsers, async (req, res) => {
         removeNinthDigit: settings?.removeNinthDigit !== false,
         schedule: scheduleData,
         personalization: {
-          enabled: settings?.personalization?.enabled || false,
+          enabled: true, // Sempre ativo
           defaultName: settings?.personalization?.defaultName || 'Cliente'
         }
       },

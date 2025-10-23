@@ -332,17 +332,14 @@ class MassDispatchService {
       // Obter nome padrão das configurações
       const defaultName = dispatch.settings?.personalization?.defaultName || 'Cliente';
 
-      // Processar template com variáveis se personalização estiver ativada
-      let processedTemplate = template;
-      if (dispatch.settings?.personalization?.enabled) {
-        processedTemplate = templateUtils.processTemplate(template, variables, defaultName);
-        console.log(`🎭 Template personalizado para ${number}:`, {
-          originalText: template.content?.text,
-          processedText: processedTemplate.content?.text,
-          contactName: contactName || 'N/A',
-          defaultName: defaultName
-        });
-      }
+      // Processar template com variáveis (sempre ativo)
+      const processedTemplate = templateUtils.processTemplate(template, variables, defaultName);
+      console.log(`🎭 Template personalizado para ${number}:`, {
+        originalText: template.content?.text,
+        processedText: processedTemplate.content?.text,
+        contactName: contactName || 'N/A',
+        defaultName: defaultName
+      });
 
       switch (processedTemplate.type) {
         case 'text':
