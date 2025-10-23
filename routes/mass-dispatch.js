@@ -9,6 +9,7 @@ const MassDispatch = require('../models/MassDispatch');
 const Template = require('../models/Template');
 const massDispatchService = require('../services/massDispatchService');
 const phoneService = require('../services/phoneService');
+const templateUtils = require('../utils/templateUtils');
 
 // Configurar multer para upload de arquivos
 const storage = multer.diskStorage({
@@ -129,6 +130,23 @@ router.get('/stats', authenticateToken, blockTrialUsers, async (req, res) => {
   }
 });
 
+// Obter variáveis disponíveis para templates
+router.get('/template-variables', authenticateToken, blockTrialUsers, async (req, res) => {
+  try {
+    const variables = templateUtils.getAvailableVariables();
+    res.json({
+      success: true,
+      data: variables
+    });
+  } catch (error) {
+    console.error('Erro ao obter variáveis de template:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Erro interno do servidor'
+    });
+  }
+});
+
 // Criar novo disparo
 router.post('/', authenticateToken, blockTrialUsers, async (req, res) => {
   try {
@@ -162,7 +180,11 @@ router.post('/', authenticateToken, blockTrialUsers, async (req, res) => {
         speed: settings?.speed || 'normal',
         validateNumbers: settings?.validateNumbers !== false,
         removeNinthDigit: settings?.removeNinthDigit !== false,
-        schedule: scheduleData
+        schedule: scheduleData,
+        personalization: {
+          enabled: settings?.personalization?.enabled || false,
+          defaultName: settings?.personalization?.defaultName || 'Cliente'
+        }
       },
       numbers: [],
       status: 'draft'

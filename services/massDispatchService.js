@@ -2,6 +2,7 @@ const MassDispatch = require('../models/MassDispatch');
 const evolutionApi = require('./evolutionApi');
 const phoneService = require('./phoneService');
 const socketManager = require('../utils/socketManager');
+const templateUtils = require('../utils/templateUtils');
 
 class MassDispatchService {
   constructor() {
@@ -53,21 +54,24 @@ class MassDispatchService {
         
         validatedNumbers = validationResult.map(result => ({
           number: result.jid.split('@')[0],
-          exists: result.exists
+          exists: result.exists,
+          name: result.name || null // Armazenar o nome do contato
         }));
       } catch (error) {
         console.error('Erro na validação WhatsApp:', error);
         // Se falhar na validação, assumir que todos são válidos
         validatedNumbers = numbersToValidate.map(num => ({
           number: num,
-          exists: true
+          exists: true,
+          name: null // Sem nome quando falha a validação
         }));
       }
     } else {
       // Se não validar, assumir que todos os números formatados são válidos
       validatedNumbers = numbersToValidate.map(num => ({
         number: num,
-        exists: true
+        exists: true,
+        name: null // Sem nome quando não há validação
       }));
     }
 
@@ -79,6 +83,7 @@ class MassDispatchService {
         original: processed.original,
         formatted: processed.formatted,
         valid: processed.isValid && (validation ? validation.exists : true),
+        contactName: validation ? validation.name : null, // Armazenar nome do contato
         status: 'pending'
       };
     });
@@ -309,17 +314,42 @@ class MassDispatchService {
    */
   async sendMessage(dispatch, numberData) {
     const { template } = dispatch;
-    const { formatted: number } = numberData;
+    const { formatted: number, contactName, original } = numberData;
 
     try {
       let result;
 
-      switch (template.type) {
+      // Preparar variáveis para substituição
+      const variables = {
+        name: contactName,
+        contactName: contactName,
+        number: number,
+        originalNumber: original,
+        formatted: number,
+        original: original
+      };
+
+      // Obter nome padrão das configurações
+      const defaultName = dispatch.settings?.personalization?.defaultName || 'Cliente';
+
+      // Processar template com variáveis se personalização estiver ativada
+      let processedTemplate = template;
+      if (dispatch.settings?.personalization?.enabled) {
+        processedTemplate = templateUtils.processTemplate(template, variables, defaultName);
+        console.log(`🎭 Template personalizado para ${number}:`, {
+          originalText: template.content?.text,
+          processedText: processedTemplate.content?.text,
+          contactName: contactName || 'N/A',
+          defaultName: defaultName
+        });
+      }
+
+      switch (processedTemplate.type) {
         case 'text':
           result = await evolutionApi.sendTextMessage(
             dispatch.instanceName,
             number,
-            template.content.text
+            processedTemplate.content.text
           );
           break;
 
@@ -327,7 +357,7 @@ class MassDispatchService {
           result = await evolutionApi.sendMedia(
             dispatch.instanceName,
             number,
-            template.content.media,
+            processedTemplate.content.media,
             'image'
           );
           break;
@@ -336,9 +366,9 @@ class MassDispatchService {
           result = await evolutionApi.sendMedia(
             dispatch.instanceName,
             number,
-            template.content.media,
+            processedTemplate.content.media,
             'image',
-            template.content.caption
+            processedTemplate.content.caption
           );
           break;
 
@@ -346,7 +376,7 @@ class MassDispatchService {
           result = await evolutionApi.sendAudioUrl(
             dispatch.instanceName,
             number,
-            template.content.media
+            processedTemplate.content.media
           );
           break;
 
@@ -354,10 +384,10 @@ class MassDispatchService {
           result = await evolutionApi.sendMedia(
             dispatch.instanceName,
             number,
-            template.content.media,
+            processedTemplate.content.media,
             'document',
             '',
-            template.content.fileName
+            processedTemplate.content.fileName
           );
           break;
 
@@ -365,15 +395,15 @@ class MassDispatchService {
           result = await evolutionApi.sendMedia(
             dispatch.instanceName,
             number,
-            template.content.media,
+            processedTemplate.content.media,
             'document',
-            template.content.caption,
-            template.content.fileName
+            processedTemplate.content.caption,
+            processedTemplate.content.fileName
           );
           break;
 
         default:
-          throw new Error(`Tipo de template não suportado: ${template.type}`);
+          throw new Error(`Tipo de template não suportado: ${processedTemplate.type}`);
       }
 
       // Validar resposta da API

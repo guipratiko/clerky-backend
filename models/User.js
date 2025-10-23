@@ -21,13 +21,14 @@ const UserSchema = new mongoose.Schema({
   },
   cpf: {
     type: String,
-    required: true,
+    required: false, // Alterado para false para compatibilidade com usuários existentes
     trim: true,
-    unique: true
+    unique: true,
+    sparse: true // Permite múltiplos valores null/undefined
   },
   phone: {
     type: String,
-    required: true,
+    required: false, // Alterado para false para compatibilidade com usuários existentes
     trim: true
   },
   status: {

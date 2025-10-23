@@ -82,10 +82,18 @@ router.post('/register', async (req, res) => {
     const { name, email, password, cpf, phone } = req.body;
 
     // Validação básica
-    if (!name || !email || !password || !cpf || !phone) {
+    if (!name || !email || !password) {
       return res.status(400).json({
         success: false,
-        error: 'Nome, email, senha, CPF e telefone são obrigatórios'
+        error: 'Nome, email e senha são obrigatórios'
+      });
+    }
+
+    // Validação específica para CPF e telefone (obrigatórios para novos usuários)
+    if (!cpf || !phone) {
+      return res.status(400).json({
+        success: false,
+        error: 'CPF e telefone são obrigatórios para novos usuários'
       });
     }
 
