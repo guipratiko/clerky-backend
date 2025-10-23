@@ -168,60 +168,34 @@ class MassDispatchService {
    * @param {string} dispatchId - ID do disparo
    */
   async processDispatch(dispatchId) {
-    console.log(`🔄 === INICIANDO PROCESSAMENTO DISPARO ${dispatchId} ===`);
-    
     const dispatch = await MassDispatch.findById(dispatchId);
     if (!dispatch || !dispatch.isActive) {
       console.log(`❌ Disparo ${dispatchId} não encontrado ou inativo:`, { found: !!dispatch, active: dispatch?.isActive });
       return;
     }
 
-    console.log(`📊 Status do disparo:`, {
-      name: dispatch.name,
-      status: dispatch.status,
-      isActive: dispatch.isActive,
-      currentIndex: dispatch.currentIndex,
-      totalNumbers: dispatch.numbers.length
-    });
-
     const validNumbers = dispatch.numbers.filter(n => n.valid && n.status === 'pending');
-    console.log(`📋 Números válidos pendentes: ${validNumbers.length}`);
-    
-    validNumbers.forEach((num, idx) => {
-      console.log(`  ${idx}: ${num.original} -> ${num.formatted} [${num.status}]`);
-    });
     
     // Verificar se ainda há números pendentes para processar
     if (validNumbers.length === 0) {
-      console.log(`✅ Todos os números processados. Finalizando disparo.`);
       // Disparo concluído
       return this.completeDispatch(dispatchId);
     }
     
     // Encontrar o número atual baseado no currentIndex
     const currentNumber = dispatch.numbers[dispatch.currentIndex];
-    console.log(`🔍 Número no índice ${dispatch.currentIndex}:`, {
-      original: currentNumber?.original,
-      formatted: currentNumber?.formatted,
-      status: currentNumber?.status,
-      valid: currentNumber?.valid
-    });
     
     // Se o número atual não está pendente, procurar o próximo pendente
     if (!currentNumber || currentNumber.status !== 'pending' || !currentNumber.valid) {
-      console.log(`⏭️ Número atual não é pendente. Procurando próximo...`);
-      
       // Encontrar próximo número pendente
       const nextPendingIndex = dispatch.numbers.findIndex((num, idx) => 
         idx > dispatch.currentIndex && num.valid && num.status === 'pending'
       );
       
       if (nextPendingIndex === -1) {
-        console.log(`✅ Não há mais números pendentes. Finalizando disparo.`);
         return this.completeDispatch(dispatchId);
       }
       
-      console.log(`📍 Próximo número pendente encontrado no índice: ${nextPendingIndex}`);
       dispatch.currentIndex = nextPendingIndex;
       await dispatch.save();
       
@@ -235,14 +209,9 @@ class MassDispatchService {
       return this.pauseDispatch(dispatchId, 'Fora do horário permitido');
     }
 
-    console.log(`🎯 Processando número no índice ${dispatch.currentIndex}: ${currentNumber.original} -> ${currentNumber.formatted}`);
-    
     try {
-      console.log(`📤 Tentando enviar para: ${currentNumber.formatted}`);
-      
       // Enviar mensagem e aguardar confirmação
       const sendResult = await this.sendMessage(dispatch, currentNumber);
-      console.log(`✅ Mensagem enviada com sucesso para: ${currentNumber.formatted}`, sendResult);
       
       // Atualizar status APENAS após confirmação de envio
       currentNumber.status = 'sent';
@@ -252,7 +221,6 @@ class MassDispatchService {
       dispatch.currentIndex++;
       dispatch.updateStatistics();
       await dispatch.save();
-      console.log(`💾 Status salvo no banco para: ${currentNumber.formatted}`);
 
       // Notificar progresso
       socketManager.emitToUser(dispatch.userId, 'mass-dispatch-progress', {
@@ -267,7 +235,6 @@ class MassDispatchService {
 
       // Agendar próximo envio APENAS após sucesso confirmado
       const delay = dispatch.getNextDelay();
-      console.log(`⏱️ Próximo envio em ${delay}ms`);
       
       const timer = setTimeout(() => {
         this.processDispatch(dispatchId);
@@ -287,7 +254,6 @@ class MassDispatchService {
       dispatch.currentIndex++;
       dispatch.updateStatistics();
       await dispatch.save();
-      console.log(`💾 Erro salvo no banco para: ${currentNumber.formatted}`);
 
       // Notificar erro
       socketManager.emitToUser(dispatch.userId, 'mass-dispatch-error', {
@@ -298,7 +264,6 @@ class MassDispatchService {
       });
 
       // Continuar com próximo número após delay menor
-      console.log(`⏱️ Tentando próximo número em 5 segundos após erro`);
       const timer = setTimeout(() => {
         this.processDispatch(dispatchId);
       }, 5000); // 5 segundos em caso de erro
@@ -316,13 +281,6 @@ class MassDispatchService {
     const { template } = dispatch;
     const { formatted: number, contactName, original } = numberData;
 
-    console.log(`🔍 Debug sendMessage:`, {
-      dispatchId: dispatch._id,
-      templateType: template?.type,
-      hasTemplate: !!template,
-      templateStructure: template,
-      number: number
-    });
 
     try {
       let result;
@@ -344,35 +302,10 @@ class MassDispatchService {
       const processedTemplate = templateUtils.processTemplate(template, variables, defaultName);
       
       if (processedTemplate.type === 'sequence') {
-        // Debug: verificar estrutura da sequência
-        console.log(`🔍 Debug sequência para ${number}:`, {
-          templateType: processedTemplate.type,
-          hasSequence: !!processedTemplate.sequence,
-          sequenceMessages: processedTemplate.sequence?.messages?.length || 0,
-          sequenceStructure: processedTemplate.sequence
-        });
-        
-        // Debug: verificar o que está sendo passado para sendMessageSequence
-        console.log(`🔍 Debug antes de sendMessageSequence:`, {
-          processedSequenceFirstMessage: processedTemplate.sequence?.messages?.[0]?.content?.text,
-          processedSequenceStructure: processedTemplate.sequence
-        });
-        
         // Enviar sequência de mensagens
         result = await this.sendMessageSequence(dispatch.instanceName, number, processedTemplate.sequence, variables, defaultName);
-        console.log(`🎭 Sequência enviada para ${number}:`, {
-          messagesCount: processedTemplate.sequence?.messages?.length || 0,
-          contactName: contactName || 'N/A',
-          defaultName: defaultName
-        });
       } else {
         // Enviar mensagem simples
-        console.log(`🎭 Template personalizado para ${number}:`, {
-          originalText: template.content?.text,
-          processedText: processedTemplate.content?.text,
-          contactName: contactName || 'N/A',
-          defaultName: defaultName
-        });
 
         switch (processedTemplate.type) {
           case 'text':
@@ -443,8 +376,6 @@ class MassDispatchService {
       }
 
       // Log de sucesso detalhado
-      console.log(`📨 Resposta da API para ${number}:`, JSON.stringify(result, null, 2));
-
       return result;
 
     } catch (error) {
@@ -470,15 +401,6 @@ class MassDispatchService {
    * @returns {Array} - Resultados das mensagens enviadas
    */
   async sendMessageSequence(instanceName, number, sequence, variables = {}, defaultName = 'Cliente') {
-    console.log(`🔍 Debug sendMessageSequence recebido:`, {
-      instanceName,
-      number,
-      hasSequence: !!sequence,
-      sequenceMessages: sequence?.messages?.length || 0,
-      firstMessageText: sequence?.messages?.[0]?.content?.text,
-      sequenceStructure: sequence
-    });
-    
     const results = [];
     
     // Verificar se sequence e messages existem
@@ -506,14 +428,6 @@ class MassDispatchService {
       const delay = messageData.delay;
       const content = message.content; // Usar o conteúdo processado
       
-      console.log(`🔍 Debug mensagem ${i} (processada):`, {
-        messageOrder: order,
-        messageType: type,
-        messageDelay: delay,
-        messageContent: content,
-        messageData: messageData,
-        rawMessage: message
-      });
       
       // Validar se a mensagem tem os campos obrigatórios
       if (!order || !type) {
@@ -528,16 +442,10 @@ class MassDispatchService {
       }
       
       try {
-        console.log(`📤 Enviando mensagem ${order} de ${sortedMessages.length} para ${number}`);
-        
         let result;
         
         switch (type) {
           case 'text':
-            console.log(`🔍 Enviando texto processado:`, {
-              originalText: content.text,
-              processedText: content.text
-            });
             result = await evolutionApi.sendTextMessage(
               instanceName,
               number,
@@ -555,10 +463,6 @@ class MassDispatchService {
             break;
 
           case 'image_caption':
-            console.log(`🔍 Enviando imagem com caption processado:`, {
-              originalCaption: content.caption,
-              processedCaption: content.caption
-            });
             result = await evolutionApi.sendMedia(
               instanceName,
               number,
@@ -588,10 +492,6 @@ class MassDispatchService {
             break;
 
           case 'file_caption':
-            console.log(`🔍 Enviando arquivo com caption processado:`, {
-              originalCaption: content.caption,
-              processedCaption: content.caption
-            });
             result = await evolutionApi.sendMedia(
               instanceName,
               number,
@@ -613,11 +513,8 @@ class MassDispatchService {
           result: result
         });
 
-        console.log(`✅ Mensagem ${order} enviada com sucesso para ${number}`);
-
         // Aguardar delay antes da próxima mensagem (exceto na última)
         if (i < sortedMessages.length - 1 && delay > 0) {
-          console.log(`⏱️ Aguardando ${delay} segundos antes da próxima mensagem...`);
           await new Promise(resolve => setTimeout(resolve, delay * 1000));
         }
 
@@ -711,54 +608,27 @@ class MassDispatchService {
    * @param {string} dispatchId - ID do disparo
    */
   async retryPendingNumbers(dispatchId) {
-    console.log(`🔄 === INICIANDO REENVIO DE NÚMEROS PENDENTES ===`);
-    console.log(`Disparo ID: ${dispatchId}`);
-    
     const dispatch = await MassDispatch.findById(dispatchId);
     if (!dispatch) throw new Error('Disparo não encontrado');
 
-    console.log(`📊 Status atual do disparo:`, {
-      name: dispatch.name,
-      status: dispatch.status,
-      isActive: dispatch.isActive,
-      currentIndex: dispatch.currentIndex
-    });
-
     const pendingNumbers = dispatch.numbers.filter(n => n.status === 'pending');
-    console.log(`📋 Números pendentes encontrados: ${pendingNumbers.length}`);
-    
-    pendingNumbers.forEach((num, idx) => {
-      console.log(`  Pendente ${idx}: ${num.original} -> ${num.formatted}`);
-    });
     
     if (pendingNumbers.length === 0) {
-      console.log(`✅ Nenhum número pendente encontrado`);
       return { success: true, message: 'Nenhum número pendente encontrado' };
     }
 
-    console.log(`🔄 Reenviando ${pendingNumbers.length} números pendentes`);
-
     // Resetar índice para o primeiro número pendente
     const firstPendingIndex = dispatch.numbers.findIndex(n => n.status === 'pending');
-    console.log(`📍 Primeiro número pendente no índice: ${firstPendingIndex}`);
     
     dispatch.currentIndex = firstPendingIndex;
     dispatch.status = 'running';
     dispatch.isActive = true;
     await dispatch.save();
     
-    console.log(`💾 Disparo atualizado:`, {
-      currentIndex: dispatch.currentIndex,
-      status: dispatch.status,
-      isActive: dispatch.isActive
-    });
-
     // Registrar disparo ativo
     this.activeDispatches.set(dispatch.instanceName, dispatchId);
-    console.log(`📝 Disparo registrado como ativo para instância: ${dispatch.instanceName}`);
 
     // Iniciar processo de envio
-    console.log(`🚀 Iniciando processo de envio...`);
     this.processDispatch(dispatchId);
 
     return { 
