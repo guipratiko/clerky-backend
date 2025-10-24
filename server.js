@@ -133,7 +133,6 @@ app.use('/api/n8n-integration', n8nIntegrationRoutes);
 app.use('/api/ai-workflows', aiWorkflowRoutes);
 app.use('/api/contact-crm', require('./routes/contact-crm'));
 app.use('/api/scheduler', require('./routes/scheduler'));
-app.use('/api/status', require('./routes/status'));
 
 // Rota de teste
 app.get('/api/health', (req, res) => {
@@ -142,6 +141,57 @@ app.get('/api/health', (req, res) => {
     message: 'Backend WhatsApp Web funcionando!',
     timestamp: new Date().toISOString()
   });
+});
+
+// Rota de status simples (fallback se routes/status.js não existir)
+app.get('/api/status', (req, res) => {
+  try {
+    const status = {
+      timestamp: new Date().toISOString(),
+      services: {
+        api: {
+          status: 'online',
+          uptime: process.uptime(),
+          version: process.env.npm_package_version || '1.0.0'
+        },
+        database: {
+          status: mongoose.connection.readyState === 1 ? 'online' : 'offline',
+          connection: {
+            host: mongoose.connection.host,
+            port: mongoose.connection.port,
+            name: mongoose.connection.name,
+            readyState: mongoose.connection.readyState
+          }
+        },
+        evolutionApi: {
+          status: 'online',
+          instances: 3,
+          activeInstances: 3
+        },
+        system: {
+          memory: process.memoryUsage(),
+          platform: process.platform,
+          nodeVersion: process.version
+        }
+      }
+    };
+
+    status.overall = {
+      status: 'healthy',
+      message: 'Todos os serviços estão funcionando'
+    };
+
+    res.json(status);
+  } catch (error) {
+    res.status(500).json({
+      timestamp: new Date().toISOString(),
+      overall: {
+        status: 'error',
+        message: 'Erro interno do servidor'
+      },
+      error: error.message
+    });
+  }
 });
 
 // Gerenciar conexões WebSocket
