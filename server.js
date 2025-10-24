@@ -133,6 +133,7 @@ app.use('/api/n8n-integration', n8nIntegrationRoutes);
 app.use('/api/ai-workflows', aiWorkflowRoutes);
 app.use('/api/contact-crm', require('./routes/contact-crm'));
 app.use('/api/scheduler', require('./routes/scheduler'));
+app.use('/api/status', require('./routes/status'));
 
 // Rota de teste
 app.get('/api/health', (req, res) => {
