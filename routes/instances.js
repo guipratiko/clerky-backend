@@ -70,7 +70,7 @@ router.get('/', authenticateToken, async (req, res) => {
 // Criar nova instância
 router.post('/', authenticateToken, async (req, res) => {
   try {
-    const { instanceName, settings } = req.body;
+    const { instanceName, displayName, settings } = req.body;
 
     if (!instanceName) {
       return res.status(400).json({
@@ -94,6 +94,7 @@ router.post('/', authenticateToken, async (req, res) => {
     // Criar instância no MongoDB (token será gerado automaticamente)
     const instance = new Instance({
       instanceName,
+      displayName: displayName || instanceName, // Usa displayName se fornecido, senão usa instanceName
       userId: req.user._id,
       settings: settings || {},
       status: 'connecting'

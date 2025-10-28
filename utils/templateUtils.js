@@ -73,7 +73,8 @@ function processTemplate(template, variables = {}, defaultName = 'Cliente') {
     return template;
   }
 
-  const processedTemplate = { ...template };
+  // Fazer DEEP COPY para não modificar o template original
+  const processedTemplate = JSON.parse(JSON.stringify(template));
 
   // Se for template de sequência
   if (processedTemplate.type === 'sequence' && processedTemplate.sequence) {

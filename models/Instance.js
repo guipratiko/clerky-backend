@@ -7,6 +7,13 @@ const InstanceSchema = new mongoose.Schema({
     required: true,
     unique: true
   },
+  displayName: {
+    type: String,
+    default: function() {
+      // Por padrão, usa o instanceName como displayName
+      return this.instanceName;
+    }
+  },
   userId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',

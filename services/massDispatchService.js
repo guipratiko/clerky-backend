@@ -79,11 +79,15 @@ class MassDispatchService {
     const finalNumbers = processedNumbers.map(processed => {
       const validation = validatedNumbers.find(v => v.number === processed.formatted);
       
+      const contactName = validation ? validation.name : null;
+      
+      console.log(`📞 Processando número: ${processed.formatted} -> Nome: ${contactName}`);
+      
       return {
         original: processed.original,
         formatted: processed.formatted,
         valid: processed.isValid && (validation ? validation.exists : true),
-        contactName: validation ? validation.name : null, // Armazenar nome do contato
+        contactName: contactName, // Armazenar nome do contato
         status: 'pending'
       };
     });
@@ -278,9 +282,9 @@ class MassDispatchService {
    * @param {object} numberData - Dados do número
    */
   async sendMessage(dispatch, numberData) {
-    const { template } = dispatch;
+    // Fazer deep copy do template ANTES de processar para garantir independência
+    const template = JSON.parse(JSON.stringify(dispatch.template));
     const { formatted: number, contactName, original } = numberData;
-
 
     try {
       let result;
@@ -298,8 +302,24 @@ class MassDispatchService {
       // Obter nome padrão das configurações
       const defaultName = dispatch.settings?.personalization?.defaultName || 'Cliente';
 
+      console.log(`\n📝 ===========================================`);
+      console.log(`📝 Processando mensagem para ${number}`);
+      console.log(`   Variáveis recebidas:`);
+      console.log(`     - contactName: "${contactName}"`);
+      console.log(`     - originalNumber: "${original}"`);
+      console.log(`     - defaultName: "${defaultName}"`);
+      console.log(`   Template ANTES de processar:`);
+      console.log(`     - type: ${template?.type}`);
+      console.log(`     - text: "${template?.content?.text}"`);
+      console.log(`   Chamando processTemplate...`);
+
       // Processar template com variáveis (sempre ativo)
       const processedTemplate = templateUtils.processTemplate(template, variables, defaultName);
+      
+      console.log(`   Template DEPOIS de processar:`);
+      console.log(`     - type: ${processedTemplate?.type}`);
+      console.log(`     - text: "${processedTemplate?.content?.text}"`);
+      console.log(`📝 ===========================================\n`);
       
       if (processedTemplate.type === 'sequence') {
         // Enviar sequência de mensagens

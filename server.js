@@ -152,7 +152,10 @@ app.get('/api/status', (req, res) => {
         api: {
           status: 'online',
           uptime: process.uptime(),
-          version: process.env.npm_package_version || '1.0.0'
+          version: process.env.npm_package_version || '1.0.0',
+          memory: {
+            rss: Math.round(process.memoryUsage().rss / 1024 / 1024) // MB
+          }
         },
         database: {
           status: mongoose.connection.readyState === 1 ? 'online' : 'offline',
@@ -169,7 +172,12 @@ app.get('/api/status', (req, res) => {
           activeInstances: 3
         },
         system: {
-          memory: process.memoryUsage(),
+          memory: {
+            used: Math.round(process.memoryUsage().heapUsed / 1024 / 1024), // MB
+            total: Math.round(process.memoryUsage().heapTotal / 1024 / 1024), // MB
+            unit: 'MB',
+            rss: Math.round(process.memoryUsage().rss / 1024 / 1024) // MB
+          },
           platform: process.platform,
           nodeVersion: process.version
         }
