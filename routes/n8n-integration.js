@@ -4,9 +4,9 @@ const n8nService = require('../services/n8nService');
 const { authenticateToken, blockTrialUsers } = require('../middleware/auth');
 const Instance = require('../models/Instance');
 
-// Middleware de autenticação e bloqueio de trial para todas as rotas
+// Middleware de autenticação para todas as rotas
 router.use(authenticateToken);
-router.use(blockTrialUsers);
+// Removido blockTrialUsers para permitir acesso durante trial
 
 // Listar integrações do usuário
 router.get('/', async (req, res) => {
@@ -51,12 +51,23 @@ router.post('/', async (req, res) => {
       });
     }
 
+    // Verificar limite de integrações para plano free (1 integração)
+    if (req.user.plan === 'free' && req.user.role !== 'admin') {
+      const userIntegrations = await n8nService.getUserIntegrations(userId);
+      if (userIntegrations.length >= 1) {
+        return res.status(403).json({
+          success: false,
+          error: 'Plano Free permite apenas 1 integração webhook. Faça upgrade para Premium para criar mais integrações.'
+        });
+      }
+    }
+
     const integration = await n8nService.createIntegration(userId, integrationData);
 
     res.status(201).json({
       success: true,
       data: integration,
-      message: 'Integração N8N criada com sucesso'
+      message: 'Integração webhook criada com sucesso'
     });
   } catch (error) {
     console.error('Erro ao criar integração N8N:', error);
@@ -120,7 +131,7 @@ router.put('/:integrationId', async (req, res) => {
     res.json({
       success: true,
       data: integration,
-      message: 'Integração N8N atualizada com sucesso'
+      message: 'Integração webhook atualizada com sucesso'
     });
   } catch (error) {
     console.error('Erro ao atualizar integração N8N:', error);
@@ -141,7 +152,7 @@ router.delete('/:integrationId', async (req, res) => {
 
     res.json({
       success: true,
-      message: 'Integração N8N deletada com sucesso'
+      message: 'Integração webhook deletada com sucesso'
     });
   } catch (error) {
     console.error('Erro ao deletar integração N8N:', error);

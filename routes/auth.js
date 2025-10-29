@@ -1,7 +1,44 @@
 const express = require('express');
 const jwt = require('jsonwebtoken');
+const bcrypt = require('bcryptjs');
 const User = require('../models/User');
 const router = express.Router();
+
+// Função para normalizar telefone brasileiro
+function normalizePhoneBR(phone) {
+  if (!phone) return null;
+  
+  // Remove todos os caracteres não numéricos
+  const cleanPhone = phone.toString().replace(/\D/g, '');
+  
+  // Se não tiver 11 dígitos, retorna como está
+  if (cleanPhone.length !== 11) {
+    return cleanPhone;
+  }
+  
+  // Extrai o DDD (2 primeiros dígitos)
+  const ddd = cleanPhone.substring(0, 2);
+  
+  // DDDs de São Paulo que mantêm o nono dígito
+  const ddsSaoPaulo = ['11', '12', '13', '14', '15', '16', '17', '18', '19'];
+  
+  // Se for DDD de São Paulo, mantém os 11 dígitos
+  if (ddsSaoPaulo.includes(ddd)) {
+    return cleanPhone;
+  }
+  
+  // Para outros DDDs, verifica se tem o nono dígito extra
+  const restOfNumber = cleanPhone.substring(2); // 9 dígitos
+  
+  // Se o terceiro dígito (após DDD) for 9 e tiver 9 dígitos após o DDD
+  if (restOfNumber.length === 9 && restOfNumber[0] === '9') {
+    // Remove o primeiro 9 (nono dígito extra)
+    const normalizedPhone = ddd + restOfNumber.substring(1);
+    return normalizedPhone;
+  }
+  
+  return cleanPhone;
+}
 
 // Middleware para verificar token JWT
 const authenticateToken = async (req, res, next) => {
@@ -280,10 +317,19 @@ router.post('/login', async (req, res) => {
       data: {
         user: {
           id: user._id,
+          _id: user._id,
           name: user.name,
           email: user.email,
           role: user.role,
-          status: user.status
+          status: user.status,
+          cpf: user.cpf || null,
+          phone: user.phone || null,
+          plan: user.plan || 'free',
+          planExpiresAt: user.planExpiresAt || null,
+          isInTrial: user.isInTrial || false,
+          trialEndsAt: user.trialEndsAt || null,
+          trialStartedAt: user.trialStartedAt || null,
+          isPasswordSet: user.isPasswordSet || false
         },
         token
       }
@@ -309,6 +355,7 @@ router.get('/me', authenticateToken, (req, res) => {
     data: {
       user: {
         id: req.user._id,
+        _id: req.user._id,
         name: req.user.name,
         email: req.user.email,
         role: req.user.role,
@@ -317,7 +364,15 @@ router.get('/me', authenticateToken, (req, res) => {
         isInTrial: isTrialActive,
         trialEndsAt: req.user.trialEndsAt,
         trialStartedAt: req.user.trialStartedAt,
-        isTrialExpired: isTrialExpired
+        isTrialExpired: isTrialExpired,
+        // Adicionar campos faltantes
+        cpf: req.user.cpf || null,
+        phone: req.user.phone || null,
+        plan: req.user.plan || 'free',
+        planExpiresAt: req.user.planExpiresAt || null,
+        isPasswordSet: req.user.isPasswordSet || false,
+        createdAt: req.user.createdAt,
+        updatedAt: req.user.updatedAt
       }
     }
   });
@@ -550,6 +605,102 @@ router.post('/complete-registration/:userId', async (req, res) => {
 
   } catch (error) {
     console.error('Erro ao completar registro:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Erro interno do servidor'
+    });
+  }
+});
+
+// Atualizar perfil do usuário (telefone e senha)
+router.put('/profile', authenticateToken, async (req, res) => {
+  try {
+    const { phone, currentPassword, newPassword } = req.body;
+    const userId = req.user._id;
+
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        error: 'Usuário não encontrado'
+      });
+    }
+
+    const updates = {};
+
+    // Atualizar telefone se fornecido
+    if (phone !== undefined) {
+      const normalizedPhone = normalizePhoneBR(phone);
+      if (normalizedPhone) {
+        updates.phone = normalizedPhone;
+        console.log(`📞 Telefone atualizado para: ${normalizedPhone}`);
+      } else if (phone === '') {
+        // Permitir remover telefone se enviar string vazia
+        updates.phone = null;
+        console.log('📞 Telefone removido');
+      }
+    }
+
+    // Atualizar senha se fornecido
+    if (newPassword) {
+      // Validar senha atual se o usuário já tem senha definida
+      if (user.isPasswordSet) {
+        if (!currentPassword) {
+          return res.status(400).json({
+            success: false,
+            error: 'Senha atual é obrigatória para alterar a senha'
+          });
+        }
+
+        // Verificar senha atual
+        const isPasswordValid = await bcrypt.compare(currentPassword, user.password);
+        if (!isPasswordValid) {
+          return res.status(401).json({
+            success: false,
+            error: 'Senha atual incorreta'
+          });
+        }
+      }
+
+      // Validar nova senha
+      if (newPassword.length < 6) {
+        return res.status(400).json({
+          success: false,
+          error: 'Nova senha deve ter pelo menos 6 caracteres'
+        });
+      }
+
+      // Hash da nova senha
+      const salt = await bcrypt.genSalt(10);
+      updates.password = await bcrypt.hash(newPassword, salt);
+      updates.isPasswordSet = true;
+      console.log('🔐 Senha atualizada');
+    }
+
+    // Aplicar atualizações
+    if (Object.keys(updates).length > 0) {
+      Object.assign(user, updates);
+      await user.save();
+
+      // Retornar dados atualizados (sem senha)
+      const updatedUser = await User.findById(userId).select('-password');
+
+      res.json({
+        success: true,
+        message: 'Perfil atualizado com sucesso',
+        data: {
+          user: updatedUser
+        }
+      });
+    } else {
+      return res.status(400).json({
+        success: false,
+        error: 'Nenhum dado para atualizar'
+      });
+    }
+
+  } catch (error) {
+    console.error('Erro ao atualizar perfil:', error);
     res.status(500).json({
       success: false,
       error: 'Erro interno do servidor'

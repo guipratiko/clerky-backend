@@ -91,6 +91,17 @@ router.post('/', authenticateToken, async (req, res) => {
       });
     }
 
+    // Verificar limite de instâncias para plano free (1 instância)
+    if (req.user.plan === 'free' && req.user.role !== 'admin') {
+      const userInstancesCount = await Instance.countDocuments({ userId: req.user._id });
+      if (userInstancesCount >= 1) {
+        return res.status(403).json({
+          success: false,
+          error: 'Plano Free permite apenas 1 instância. Faça upgrade para Premium para criar mais instâncias.'
+        });
+      }
+    }
+
     // Criar instância no MongoDB (token será gerado automaticamente)
     const instance = new Instance({
       instanceName,

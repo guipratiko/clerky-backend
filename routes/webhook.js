@@ -921,8 +921,22 @@ router.post('/appmax', async (req, res) => {
       // Se o usuário já existe, atualizar o plano e renovar acesso
       console.log('👤 Usuário já existe. Renovando acesso...');
       
-      const planExpiresAt = new Date();
-      planExpiresAt.setMonth(planExpiresAt.getMonth() + 1); // +1 mês
+      // Se o usuário já tem um plano válido, somar 1 mês a partir da data de vencimento
+      // Caso contrário, criar nova data a partir de hoje + 1 mês
+      const now = new Date();
+      let planExpiresAt;
+      
+      if (user.planExpiresAt && new Date(user.planExpiresAt) > now) {
+        // Plano ainda válido - somar 1 mês a partir da data de vencimento
+        planExpiresAt = new Date(user.planExpiresAt);
+        planExpiresAt.setMonth(planExpiresAt.getMonth() + 1);
+        console.log(`📅 Plano válido encontrado. Somando 1 mês a partir de ${user.planExpiresAt.toLocaleDateString('pt-BR')}`);
+      } else {
+        // Plano não existe ou já expirou - criar novo a partir de hoje
+        planExpiresAt = new Date();
+        planExpiresAt.setMonth(planExpiresAt.getMonth() + 1);
+        console.log(`📅 Criando novo plano válido até ${planExpiresAt.toLocaleDateString('pt-BR')}`);
+      }
 
       // Atualizar telefone normalizado e CPF se fornecidos
       const normalizedPhone = normalizePhoneBR(phone);
