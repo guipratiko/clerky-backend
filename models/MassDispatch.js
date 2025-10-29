@@ -59,7 +59,8 @@ const massDispatchSchema = new mongoose.Schema({
     original: String, // Número original inserido
     formatted: String, // Número formatado para envio
     valid: Boolean, // Se o número existe no WhatsApp
-    contactName: String, // Nome do contato obtido na verificação WhatsApp
+    contactName: String, // Nome fornecido pelo usuário (pode ser null)
+    whatsappName: String, // Nome retornado pelo WhatsApp na validação (pode ser null)
     status: {
       type: String,
       enum: ['pending', 'sent', 'failed', 'scheduled'],

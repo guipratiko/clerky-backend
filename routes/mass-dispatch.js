@@ -245,7 +245,16 @@ router.post('/:id/upload-numbers', authenticateToken, blockTrialUsers, upload.si
     if (manualNumbers) {
       const manualList = manualNumbers.split('\n')
         .map(n => n.trim())
-        .filter(n => n.length > 0);
+        .filter(n => n.length > 0)
+        .map(n => {
+          // Verificar se está no formato nome;numero
+          if (n.includes(';')) {
+            const [name, phone] = n.split(';').map(s => s.trim());
+            return { name, phone };
+          }
+          // Apenas número
+          return n;
+        });
       rawNumbers = rawNumbers.concat(manualList);
     }
 
@@ -261,10 +270,19 @@ router.post('/:id/upload-numbers', authenticateToken, blockTrialUsers, upload.si
       } else if (req.file.mimetype === 'text/xml' || req.file.mimetype === 'application/xml') {
         fileNumbers = phoneService.extractFromXML(fileContent);
       } else if (req.file.mimetype === 'text/plain') {
-        // Arquivo TXT - cada linha é um número
+        // Arquivo TXT - cada linha pode ser um número ou nome;numero
         fileNumbers = fileContent.split('\n')
           .map(n => n.trim())
-          .filter(n => n.length > 0);
+          .filter(n => n.length > 0)
+          .map(n => {
+            // Verificar se está no formato nome;numero
+            if (n.includes(';')) {
+              const [name, phone] = n.split(';').map(s => s.trim());
+              return { name, phone };
+            }
+            // Apenas número
+            return n;
+          });
       }
       
       rawNumbers = rawNumbers.concat(fileNumbers);
@@ -279,9 +297,6 @@ router.post('/:id/upload-numbers', authenticateToken, blockTrialUsers, upload.si
         error: 'Nenhum número foi fornecido'
       });
     }
-
-    // Remover duplicatas
-    rawNumbers = [...new Set(rawNumbers)];
 
     // Processar e validar números
     const result = await massDispatchService.processNumbers(id, rawNumbers);

@@ -79,15 +79,20 @@ class MassDispatchService {
     const finalNumbers = processedNumbers.map(processed => {
       const validation = validatedNumbers.find(v => v.number === processed.formatted);
       
-      const contactName = validation ? validation.name : null;
+      // Separar nome do usuário e nome do WhatsApp para permitir fallback correto
+      // contactName = apenas nome fornecido pelo usuário (null se não fornecido)
+      // whatsappName = nome retornado pelo WhatsApp na validação (null se não houver)
+      const contactName = processed.userProvidedName || null; // Apenas nome fornecido pelo usuário
+      const whatsappName = validation && validation.name ? validation.name : null; // Nome do WhatsApp
       
-      console.log(`📞 Processando número: ${processed.formatted} -> Nome: ${contactName}`);
+      console.log(`📞 Processando número: ${processed.formatted} -> Nome fornecido: ${contactName || 'não'} -> Nome WhatsApp: ${whatsappName || 'não'}`);
       
       return {
         original: processed.original,
         formatted: processed.formatted,
         valid: processed.isValid && (validation ? validation.exists : true),
-        contactName: contactName, // Armazenar nome do contato
+        contactName: contactName, // Nome fornecido pelo usuário (pode ser null)
+        whatsappName: whatsappName, // Nome retornado pelo WhatsApp (pode ser null)
         status: 'pending'
       };
     });
@@ -284,30 +289,46 @@ class MassDispatchService {
   async sendMessage(dispatch, numberData) {
     // Fazer deep copy do template ANTES de processar para garantir independência
     const template = JSON.parse(JSON.stringify(dispatch.template));
-    const { formatted: number, contactName, original } = numberData;
+    const { formatted: number, contactName, whatsappName, original } = numberData;
 
     try {
       let result;
 
+      // Obter nome padrão das configurações
+      const defaultName = dispatch.settings?.personalization?.defaultName || 'Cliente';
+
+      // Debug: verificar o que está chegando do numberData
+      console.log(`\n🔍 DEBUG - Dados recebidos do numberData:`, {
+        formatted: numberData.formatted,
+        contactName: numberData.contactName,
+        whatsappName: numberData.whatsappName,
+        original: numberData.original,
+        fullObject: JSON.stringify(numberData)
+      });
+
       // Preparar variáveis para substituição
+      // A prioridade será resolvida no templateUtils:
+      // 1. userProvidedName (nome fornecido pelo usuário)
+      // 2. whatsappName (nome retornado pelo WhatsApp)
+      // 3. defaultName (Cliente ou personalizado)
       const variables = {
-        name: contactName,
-        contactName: contactName,
+        userProvidedName: contactName, // Nome fornecido pelo usuário (pode ser null)
+        whatsappName: whatsappName, // Nome do WhatsApp (pode ser null)
+        name: contactName || whatsappName || defaultName, // Nome final para referência
+        contactName: contactName || whatsappName || defaultName, // Nome final para referência
         number: number,
         originalNumber: original,
         formatted: number,
         original: original
       };
 
-      // Obter nome padrão das configurações
-      const defaultName = dispatch.settings?.personalization?.defaultName || 'Cliente';
-
       console.log(`\n📝 ===========================================`);
       console.log(`📝 Processando mensagem para ${number}`);
       console.log(`   Variáveis recebidas:`);
-      console.log(`     - contactName: "${contactName}"`);
-      console.log(`     - originalNumber: "${original}"`);
+      console.log(`     - userProvidedName: ${contactName !== null && contactName !== undefined ? `"${contactName}"` : 'null'}`);
+      console.log(`     - whatsappName: ${whatsappName !== null && whatsappName !== undefined ? `"${whatsappName}"` : 'null'}`);
       console.log(`     - defaultName: "${defaultName}"`);
+      console.log(`     - originalNumber: "${original}"`);
       console.log(`   Template ANTES de processar:`);
       console.log(`     - type: ${template?.type}`);
       console.log(`     - text: "${template?.content?.text}"`);

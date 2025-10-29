@@ -16,32 +16,41 @@ function replaceTemplateVariables(text, variables = {}, defaultName = 'Cliente')
 
   let processedText = text;
 
+  // Obter nome do contato seguindo prioridade: userProvidedName > whatsappName > defaultName
+  const contactName = variables.userProvidedName || variables.whatsappName || variables.name || variables.contactName || null;
+  const nameToUse = contactName && contactName.trim() ? contactName.trim() : defaultName;
+
   // Substituir $name pelo nome do contato ou palavra padrão
   if (processedText.includes('$name')) {
-    const contactName = variables.name || variables.contactName;
-    const nameToUse = contactName && contactName.trim() ? contactName.trim() : defaultName;
     processedText = processedText.replace(/\$name/g, nameToUse);
   }
 
   // Substituir $firstName pelo primeiro nome
   if (processedText.includes('$firstName')) {
-    const contactName = variables.name || variables.contactName;
     if (contactName && contactName.trim()) {
+      // Se tem nome, pegar primeira palavra
       const firstName = contactName.trim().split(' ')[0];
       processedText = processedText.replace(/\$firstName/g, firstName);
     } else {
+      // Se não tem nome, usar defaultName
       processedText = processedText.replace(/\$firstName/g, defaultName);
     }
   }
 
-  // Substituir $lastName pelo último nome
+  // Substituir $lastName por tudo depois da primeira palavra
   if (processedText.includes('$lastName')) {
-    const contactName = variables.name || variables.contactName;
     if (contactName && contactName.trim()) {
       const nameParts = contactName.trim().split(' ');
-      const lastName = nameParts.length > 1 ? nameParts[nameParts.length - 1] : '';
-      processedText = processedText.replace(/\$lastName/g, lastName || defaultName);
+      if (nameParts.length > 1) {
+        // Pega tudo depois da primeira palavra (ex: "lara linda" -> "linda", "joão silva santos" -> "silva santos")
+        const lastName = nameParts.slice(1).join(' ');
+        processedText = processedText.replace(/\$lastName/g, lastName);
+      } else {
+        // Se só tem uma palavra, usar defaultName
+        processedText = processedText.replace(/\$lastName/g, defaultName);
+      }
     } else {
+      // Se não tem nome, usar defaultName
       processedText = processedText.replace(/\$lastName/g, defaultName);
     }
   }

@@ -97,11 +97,23 @@ class PhoneService {
 
   /**
    * Processa uma lista de números
-   * @param {Array} phones - Lista de números
+   * @param {Array} phones - Lista de números ou objetos { name, phone }
    * @returns {Array} - Lista de números processados
    */
   processPhoneList(phones) {
-    return phones.map(phone => this.processPhone(phone));
+    return phones.map(item => {
+      if (typeof item === 'string') {
+        // Formato antigo: apenas string
+        return this.processPhone(item);
+      } else {
+        // Formato novo: objeto { name, phone }
+        const processed = this.processPhone(item.phone);
+        return {
+          ...processed,
+          userProvidedName: item.name || null
+        };
+      }
+    });
   }
 
   /**
@@ -132,54 +144,94 @@ class PhoneService {
   }
 
   /**
-   * Extrai números de um texto CSV
+   * Extrai números de um texto CSV (com suporte a nomes)
    * @param {string} csvContent - Conteúdo do CSV
-   * @param {string} columnName - Nome da coluna (padrão: 'telefone')
-   * @returns {Array} - Lista de números extraídos
+   * @returns {Array} - Lista de objetos { name, phone }
    */
-  extractFromCSV(csvContent, columnName = 'telefone') {
+  extractFromCSV(csvContent) {
     const lines = csvContent.split('\n').filter(line => line.trim());
     if (lines.length === 0) return [];
     
+    // Detectar delimitador (vírgula ou ponto-e-vírgula)
+    const delimiter = lines[0].includes(';') ? ';' : ',';
+    
     // Primeira linha são os cabeçalhos
-    const headers = lines[0].split(',').map(h => h.trim().toLowerCase());
-    const phoneColumnIndex = headers.findIndex(h => 
-      h.includes('telefone') || h.includes('phone') || h.includes('celular') || h.includes('whatsapp')
+    const headers = lines[0].split(delimiter).map(h => h.trim().toLowerCase());
+    
+    // Buscar coluna de nome
+    const nameColumnIndex = headers.findIndex(h => 
+      h === 'name' || h === 'nome'
     );
     
+    // Buscar coluna de telefone - aceitar várias variações
+    const phoneColumnIndex = headers.findIndex(h => {
+      const headerLower = h.toLowerCase();
+      return headerLower.includes('telefone') || 
+             headerLower.includes('phone') || 
+             headerLower.includes('celular') || 
+             headerLower.includes('whatsapp') ||
+             headerLower === 'numero' || 
+             headerLower === 'números' ||
+             headerLower === 'contatos' || 
+             headerLower === 'contato';
+    });
+    
     if (phoneColumnIndex === -1) {
-      throw new Error('Coluna de telefone não encontrada. Certifique-se de que existe uma coluna com "telefone", "phone", "celular" ou "whatsapp"');
+      console.log('📄 Cabeçalhos encontrados:', headers);
+      throw new Error('Coluna de telefone não encontrada. Certifique-se de que existe uma coluna com "telefone", "phone", "celular", "whatsapp", "numero" ou "contato"');
     }
     
-    const phones = [];
+    const contacts = [];
     for (let i = 1; i < lines.length; i++) {
-      const columns = lines[i].split(',');
+      const columns = lines[i].split(delimiter);
       if (columns[phoneColumnIndex]) {
         const phone = columns[phoneColumnIndex].trim();
-        if (phone) phones.push(phone);
+        const name = nameColumnIndex !== -1 && columns[nameColumnIndex] ? columns[nameColumnIndex].trim() : null;
+        
+        if (phone) {
+          contacts.push({ name, phone });
+        }
       }
     }
     
-    return phones;
+    return contacts;
   }
 
   /**
-   * Extrai números de um XML
+   * Extrai números de um XML (com suporte a nomes)
    * @param {string} xmlContent - Conteúdo do XML
-   * @returns {Array} - Lista de números extraídos
+   * @returns {Array} - Lista de objetos { name, phone }
    */
   extractFromXML(xmlContent) {
-    // Regex simples para extrair números de tags que contenham "telefone", "phone", etc.
-    const phoneRegex = /<(?:telefone|phone|celular|whatsapp)[^>]*>([^<]+)</gi;
-    const phones = [];
-    let match;
+    // Regex para extrair números de tags que contenham "telefone", "phone", etc.
+    const phoneRegex = /<(?:telefone|phone|celular|whatsapp|numero|numero|contato|contatos)[^>]*>([^<]+)</gi;
+    // Regex para extrair nomes de tags que contenham "name", "nome"
+    const nameRegex = /<(?:name|nome)[^>]*>([^<]+)</gi;
     
-    while ((match = phoneRegex.exec(xmlContent)) !== null) {
-      const phone = match[1].trim();
-      if (phone) phones.push(phone);
+    const contacts = [];
+    let phoneMatch;
+    let nameMatch;
+    
+    // Extrair todos os nomes
+    const names = [];
+    nameRegex.lastIndex = 0;
+    while ((nameMatch = nameRegex.exec(xmlContent)) !== null) {
+      names.push(nameMatch[1].trim());
     }
     
-    return phones;
+    // Extrair todos os números
+    phoneRegex.lastIndex = 0;
+    let phoneIndex = 0;
+    while ((phoneMatch = phoneRegex.exec(xmlContent)) !== null) {
+      const phone = phoneMatch[1].trim();
+      if (phone) {
+        const name = names[phoneIndex] || null;
+        contacts.push({ name, phone });
+        phoneIndex++;
+      }
+    }
+    
+    return contacts;
   }
 
   /**
