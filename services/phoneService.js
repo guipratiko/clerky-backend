@@ -96,6 +96,17 @@ class PhoneService {
   }
 
   /**
+   * Normaliza um número de telefone para formato 55DDXXXXXXXXX
+   * @param {string} phone
+   * @returns {string|null}
+   */
+  normalizePhone(phone) {
+    if (!phone) return null;
+    const processed = this.processPhone(phone);
+    return processed.isValid ? processed.formatted : null;
+  }
+
+  /**
    * Processa uma lista de números
    * @param {Array} phones - Lista de números ou objetos { name, phone }
    * @returns {Array} - Lista de números processados

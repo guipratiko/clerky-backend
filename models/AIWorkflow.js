@@ -66,6 +66,25 @@ const AIWorkflowSchema = new mongoose.Schema({
       description: 'Coluna de destino: 1=novo, 2=andamento, 3=carrinho, 4=aprovado, 5=reprovado'
     }
   },
+  audioReply: {
+    enabled: {
+      type: Boolean,
+      default: false,
+      description: 'Ativar/desativar respostas em áudio'
+    },
+    voice: {
+      type: String,
+      default: 'fable',
+      description: 'Voz utilizada para sintetizar o áudio'
+    }
+  },
+  singleReply: {
+    enabled: {
+      type: Boolean,
+      default: false,
+      description: 'Responde apenas uma vez por contato (bloqueia após a primeira resposta)'
+    }
+  },
   settings: {
     // Configurações específicas do workflow de IA
     model: {

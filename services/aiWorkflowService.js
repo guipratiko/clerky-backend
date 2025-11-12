@@ -12,6 +12,15 @@ class AIWorkflowService {
     };
   }
 
+  ensureExpression(value = '') {
+    if (!value) return '';
+    const trimmed = value.trimStart();
+    if (trimmed.startsWith('=')) {
+      return value;
+    }
+    return `=${value}`;
+  }
+
   // Mapear número da coluna para nome
   getColumnName(columnNumber) {
     const columns = {
@@ -46,16 +55,33 @@ class AIWorkflowService {
       // Extrair opções com valores padrão
       const {
         waitTime = 13,
-        kanbanTool = {
-          enabled: false,
-          authToken: '',
-          targetColumn: 2
-        }
+        kanbanTool: kanbanToolOption,
+        audioReply: audioReplyOption,
+        singleReply: singleReplyOption
       } = options;
+
+      const kanbanToolConfig = {
+        enabled: kanbanToolOption?.enabled === true,
+        authToken: kanbanToolOption?.authToken || '',
+        targetColumn: kanbanToolOption?.targetColumn && kanbanToolOption.targetColumn >= 1 && kanbanToolOption.targetColumn <= 5
+          ? kanbanToolOption.targetColumn
+          : 2
+      };
+
+      const audioReplyConfig = {
+        enabled: audioReplyOption?.enabled === true,
+        voice: audioReplyOption?.voice || 'fable'
+      };
+
+      const singleReplyConfig = {
+        enabled: singleReplyOption?.enabled === true
+      };
 
       console.log(`🤖 Criando workflow de IA para usuário: ${userId}, instância: ${instanceName}`);
       console.log(`⏱️  Tempo de espera: ${waitTime}s`);
-      console.log(`📊 Kanban Tool: ${kanbanTool.enabled ? 'Ativada' : 'Desativada'}`);
+      console.log(`📊 Kanban Tool: ${kanbanToolConfig.enabled ? 'Ativada' : 'Desativada'}`);
+      console.log(`🔊 Resposta em áudio: ${audioReplyConfig.enabled ? 'Ativada' : 'Desativada'} (voz: ${audioReplyConfig.voice})`);
+      console.log(`🔁 Responder uma única vez: ${singleReplyConfig.enabled ? 'Ativado' : 'Desativado'}`);
       
       // Verificar se a instância pertence ao usuário
       const Instance = require('../models/Instance');
@@ -125,127 +151,195 @@ class AIWorkflowService {
       }
 
       // 3. Criar nós adicionais
-      const waitNodeId = this.generateNewNodeId();
-      const waitNode = {
-        parameters: {
-          amount: waitTime
-        },
-        type: "n8n-nodes-base.wait",
-        typeVersion: 1.1,
-        position: [704, 1504],
-        id: waitNodeId,
-        name: "Wait",
-        webhookId: this.generateNewNodeId()
-      };
-
-      const kanbanToolNodeId = this.generateNewNodeId();
-      const columnName = this.getColumnName(kanbanTool.targetColumn);
-      const kanbanToolNode = {
-        parameters: {
-          toolDescription: "Atualiza a coluna kanban de um chat para organizar atendimentos",
-          method: "PUT",
-          url: `=https://back.clerky.com.br/api/chats/${instanceName}/{{ $('Edit Fields1').item.json.telefoneCliente }}/kanban-column`,
-          sendHeaders: true,
-          headerParameters: {
-            parameters: [
-              {
-                name: "Content-Type",
-                value: "application/json"
-              },
-              {
-                name: "Authorization",
-                value: `Bearer ${kanbanTool.authToken}`
+      const columnName = this.getColumnName(kanbanToolConfig.targetColumn);
+      const updatedNodesFromTemplate = originalWorkflow.nodes.map(node => {
+        if (node.type === 'n8n-nodes-base.webhook') {
+          return {
+            parameters: {
+              httpMethod: "POST",
+              path: newWebhookPath,
+              options: {
+                responseHeaders: {
+                  entries: [
+                    {
+                      name: "Content-Type",
+                      value: "application/json"
+                    }
+                  ]
+                }
               }
-            ]
-          },
-          sendBody: true,
-          specifyBody: "json",
-          jsonBody: `={\"column\": \"${columnName}\"}`,
-          options: {}
-        },
-        type: "n8n-nodes-base.httpRequestTool",
-        typeVersion: 4.2,
-        position: [3136, 2464],
-        id: kanbanToolNodeId,
-        name: "mudar_coluna_kanban"
-      };
+            },
+            type: "n8n-nodes-base.webhook",
+            typeVersion: node.typeVersion || 2,
+            position: node.position,
+            id: this.generateNewNodeId(),
+            name: node.name,
+            webhookId: newWebhookPath
+          };
+        }
 
-      // Adicionar disabled se não estiver ativado
-      if (!kanbanTool.enabled) {
-        kanbanToolNode.disabled = true;
-      }
+        if (node.type === '@n8n/n8n-nodes-langchain.agent') {
+          return {
+            ...node,
+            parameters: {
+              ...node.parameters,
+              options: {
+                ...node.parameters.options,
+                systemMessage: this.ensureExpression(prompt || '')
+              }
+            }
+          };
+        }
 
-      // 4. Criar novo workflow com webhook novo e System Message vazio
+        if (node.type === 'n8n-nodes-evolution-api.evolutionApi') {
+          if (node.parameters?.operation === 'send-audio') {
+            const updatedAudioNode = {
+              ...node,
+              parameters: {
+                ...node.parameters,
+                instanceName,
+                remoteJid: "={{ $('Trata dados pos concatenar').item.json.telefoneCliente }}"
+              }
+            };
+
+            if (audioReplyConfig.enabled) {
+              delete updatedAudioNode.disabled;
+            } else {
+              updatedAudioNode.disabled = true;
+            }
+
+            return updatedAudioNode;
+          }
+
+          const updatedTextNode = {
+            ...node,
+            parameters: {
+              ...node.parameters,
+              instanceName,
+              remoteJid: "={{ $('Trata Pos Block').item.json.telefoneCliente }}",
+              messageText: "={{ $json.output }}"
+            }
+          };
+
+          delete updatedTextNode.disabled;
+          return updatedTextNode;
+        }
+
+        if (node.type === 'n8n-nodes-base.wait' && node.name === 'JuntaMENSAGEM') {
+          return {
+            ...node,
+            parameters: {
+              ...node.parameters,
+              amount: waitTime
+            }
+          };
+        }
+
+        if (node.type === 'n8n-nodes-base.wait' && node.name === 'Espera') {
+          return {
+            ...node,
+            parameters: {
+              ...node.parameters,
+              amount: waitTime
+            }
+          };
+        }
+
+        if (node.type === 'n8n-nodes-base.httpRequestTool' && node.name === 'mudar_coluna_kanban') {
+          const updatedNode = {
+            ...node,
+            parameters: {
+              ...node.parameters,
+              url: `=https://back.clerky.com.br/api/chats/${instanceName}/{{ $('Trata dados pos concatenar').item.json.telefoneCliente }}/kanban-column`,
+              headerParameters: {
+                parameters: [
+                  {
+                    name: "Content-Type",
+                    value: "application/json"
+                  },
+                  {
+                    name: "Authorization",
+                    value: `Bearer ${kanbanToolConfig.authToken || ''}`
+                  }
+                ]
+              },
+              jsonBody: `={\"column\": \"${columnName}\"}`
+            }
+          };
+
+          if (!kanbanToolConfig.enabled) {
+            updatedNode.disabled = true;
+          } else {
+            delete updatedNode.disabled;
+          }
+
+          return updatedNode;
+        }
+
+        if (node.type === 'n8n-nodes-base.set' && node.name === 'Edit Fields5') {
+          const updatedNode = { ...node };
+          if (singleReplyConfig.enabled) {
+            delete updatedNode.disabled;
+          } else {
+            updatedNode.disabled = true;
+          }
+          return updatedNode;
+        }
+
+        if (node.type === 'n8n-nodes-base.if' && node.name === 'If') {
+          const updatedNode = { ...node };
+          if (singleReplyConfig.enabled) {
+            delete updatedNode.disabled;
+          } else {
+            updatedNode.disabled = true;
+          }
+          return updatedNode;
+        }
+
+        if (node.type === 'n8n-nodes-base.redis' && node.name === 'Redis') {
+          const updatedNode = { ...node };
+          if (singleReplyConfig.enabled) {
+            delete updatedNode.disabled;
+          } else {
+            updatedNode.disabled = true;
+          }
+          return updatedNode;
+        }
+
+        if (node.type === '@n8n/n8n-nodes-langchain.openAi' && node.parameters?.resource === 'audio') {
+          const updatedNode = {
+            ...node,
+            parameters: {
+              ...node.parameters,
+              voice: audioReplyConfig.voice || node.parameters.voice || 'fable'
+            }
+          };
+
+          if (audioReplyConfig.enabled) {
+            delete updatedNode.disabled;
+          } else {
+            updatedNode.disabled = true;
+          }
+
+          return updatedNode;
+        }
+
+        if (node.type === 'n8n-nodes-base.extractFromFile') {
+          const updatedNode = { ...node };
+          if (audioReplyConfig.enabled) {
+            delete updatedNode.disabled;
+          } else {
+            updatedNode.disabled = true;
+          }
+          return updatedNode;
+        }
+
+        return node;
+      });
+
       const newWorkflow = {
         name: newWorkflowName,
-        nodes: [
-          ...originalWorkflow.nodes.map(node => {
-            if (node.type === 'n8n-nodes-base.webhook') {
-              // Criar um novo webhook completamente novo
-              return {
-                parameters: {
-                  httpMethod: "POST",
-                  path: newWebhookPath,
-                  options: {
-                    responseHeaders: {
-                      entries: [
-                        {
-                          name: "Content-Type",
-                          value: "application/json"
-                        }
-                      ]
-                    }
-                  }
-                },
-                type: "n8n-nodes-base.webhook",
-                typeVersion: 2,
-                position: [448, 512],
-                id: this.generateNewNodeId(),
-                name: "Webhook",
-                webhookId: newWebhookPath
-              };
-            } else if (node.type === '@n8n/n8n-nodes-langchain.agent') {
-              // Modificar AI Agent para deixar System Message vazio
-              return {
-                ...node,
-                parameters: {
-                  ...node.parameters,
-                  options: {
-                    ...node.parameters.options,
-                    systemMessage: prompt || '' // System Message vazio ou com prompt personalizado
-                  }
-                }
-              };
-            } else if (node.type === 'n8n-nodes-evolution-api.evolutionApi') {
-              // Criar um novo nó Evolution API completamente novo
-              return {
-                parameters: {
-                  resource: "messages-api",
-                  instanceName: instanceName, // Usar o nome da instância selecionada
-                  remoteJid: "={{ $('Webhook').item.json.body.data.key.remoteJid }}",
-                  messageText: "={{ $json.output }}",
-                  options_message: {}
-                },
-                type: "n8n-nodes-evolution-api.evolutionApi",
-                typeVersion: 1,
-                position: [5168, 2224],
-                id: this.generateNewNodeId(),
-                name: "Enviar texto",
-                credentials: {
-                  evolutionApi: {
-                    id: "UaHcVwwqAl5Pn8FZ",
-                    name: "Evolution account"
-                  }
-                }
-              };
-            }
-            // Manter outros nós inalterados
-            return node;
-          }),
-          // Adicionar nós novos
-          waitNode,
-          kanbanToolNode
-        ],
+        nodes: updatedNodesFromTemplate,
         connections: originalWorkflow.connections,
         settings: originalWorkflow.settings,
         staticData: originalWorkflow.staticData
@@ -306,18 +400,17 @@ class AIWorkflowService {
         webhookMethod: newWebhookNode.parameters.httpMethod,
         prompt: prompt || '',
         waitTime: waitTime,
-        kanbanTool: {
-          enabled: kanbanTool.enabled,
-          authToken: kanbanTool.authToken,
-          targetColumn: kanbanTool.targetColumn
-        },
+        kanbanTool: kanbanToolConfig,
+        audioReply: audioReplyConfig,
+        singleReply: singleReplyConfig,
         isActive: true
       });
 
       await aiWorkflow.save();
       console.log('💾 Workflow salvo no banco de dados!');
       console.log(`⏱️  Wait Time: ${waitTime}s`);
-      console.log(`📊 Kanban Tool: ${kanbanTool.enabled ? 'Ativada - Coluna ' + kanbanTool.targetColumn : 'Desativada'}`);
+      console.log(`📊 Kanban Tool: ${kanbanToolConfig.enabled ? 'Ativada - Coluna ' + kanbanToolConfig.targetColumn : 'Desativada'}`);
+      console.log(`🔊 Resposta em áudio: ${audioReplyConfig.enabled ? 'Ativada' : 'Desativada'} (voz: ${audioReplyConfig.voice})`);
 
       return {
         id: aiWorkflow._id,
@@ -329,6 +422,8 @@ class AIWorkflowService {
         webhookMethod: newWebhookNode.parameters.httpMethod,
         prompt: aiWorkflow.prompt,
         isActive: true,
+        singleReply: aiWorkflow.singleReply,
+        audioReply: aiWorkflow.audioReply,
         n8nUrl: `${this.baseUrl}/workflow/${newWorkflowId}`,
         originalId: this.templateWorkflowId
       };
@@ -403,10 +498,10 @@ class AIWorkflowService {
       const n8nWorkflow = n8nResponse.data;
       console.log(`✅ Workflow N8N carregado com ${n8nWorkflow.nodes.length} nós`);
       
-      // Encontrar e atualizar o nó Wait
+      // Encontrar e atualizar os nós de espera relevantes
       let waitNodeFound = false;
       const updatedNodes = n8nWorkflow.nodes.map(node => {
-        if (node.type === 'n8n-nodes-base.wait' && node.name === 'Wait') {
+        if (node.type === 'n8n-nodes-base.wait' && (node.name === 'JuntaMENSAGEM' || node.name === 'Espera')) {
           waitNodeFound = true;
           console.log(`⏱️  Atualizando nó Wait: ${node.name}`);
           return {
@@ -581,6 +676,222 @@ class AIWorkflowService {
     }
   }
 
+  // Atualizar configuração de resposta em áudio
+  async updateAudioReply(workflowId, userId, audioReplyConfig = {}) {
+    try {
+      console.log(`🔄 Iniciando atualização de resposta em áudio para workflow ${workflowId}, usuário ${userId}`);
+
+      const enabled = audioReplyConfig.enabled === true;
+      const voice = audioReplyConfig.voice || 'fable';
+
+      const workflow = await AIWorkflow.findOne({
+        _id: workflowId,
+        userId
+      });
+
+      if (!workflow) {
+        throw new Error('Workflow não encontrado ou não pertence ao usuário');
+      }
+
+      console.log(`📋 Workflow encontrado: ${workflow.workflowName} (ID: ${workflow.workflowId})`);
+      console.log(`🔊 Novo estado: ${enabled ? 'Ativado' : 'Desativado'} (voz: ${voice})`);
+
+      // Atualizar no N8N
+      console.log(`🌐 Buscando workflow no N8N: ${workflow.workflowId}`);
+      const n8nResponse = await axios.get(
+        `${this.baseUrl}/api/v1/workflows/${workflow.workflowId}`,
+        { headers: this.headers }
+      );
+
+      const n8nWorkflow = n8nResponse.data;
+      console.log(`✅ Workflow N8N carregado com ${n8nWorkflow.nodes.length} nós`);
+
+      let openAiAudioFound = false;
+      let extractNodeFound = false;
+      let sendAudioNodeFound = false;
+
+      const updatedNodes = n8nWorkflow.nodes.map(node => {
+        if (node.type === '@n8n/n8n-nodes-langchain.openAi' && node.parameters?.resource === 'audio') {
+          openAiAudioFound = true;
+          const updatedNode = {
+            ...node,
+            parameters: {
+              ...node.parameters,
+              voice
+            }
+          };
+
+          if (enabled) {
+            delete updatedNode.disabled;
+          } else {
+            updatedNode.disabled = true;
+          }
+
+          return updatedNode;
+        }
+
+        if (node.type === 'n8n-nodes-base.extractFromFile') {
+          extractNodeFound = true;
+          const updatedNode = { ...node };
+          if (enabled) {
+            delete updatedNode.disabled;
+          } else {
+            updatedNode.disabled = true;
+          }
+          return updatedNode;
+        }
+
+        if (node.type === 'n8n-nodes-evolution-api.evolutionApi' && node.parameters?.operation === 'send-audio') {
+          sendAudioNodeFound = true;
+          const updatedNode = {
+            ...node,
+            parameters: {
+              ...node.parameters,
+              instanceName: workflow.instanceName,
+              remoteJid: "={{ $('Trata dados pos concatenar').item.json.telefoneCliente }}"
+            }
+          };
+
+          if (enabled) {
+            delete updatedNode.disabled;
+          } else {
+            updatedNode.disabled = true;
+          }
+
+          return updatedNode;
+        }
+
+        return node;
+      });
+
+      if (!openAiAudioFound || !extractNodeFound || !sendAudioNodeFound) {
+        console.log('⚠️ Nem todos os nós de áudio foram encontrados no workflow - atualização parcial aplicada');
+      }
+
+      const updatePayload = {
+        name: n8nWorkflow.name,
+        nodes: updatedNodes,
+        connections: n8nWorkflow.connections,
+        settings: n8nWorkflow.settings || {},
+        staticData: n8nWorkflow.staticData || null
+      };
+
+      console.log('📤 Enviando atualização de resposta em áudio para N8N...');
+      await axios.put(
+        `${this.baseUrl}/api/v1/workflows/${workflow.workflowId}`,
+        updatePayload,
+        { headers: this.headers }
+      );
+      console.log('✅ Configuração de áudio atualizada no N8N com sucesso!');
+
+      workflow.audioReply = {
+        enabled,
+        voice
+      };
+      await workflow.save();
+
+      console.log('✅ Configuração de áudio salva no banco de dados!');
+      return workflow;
+    } catch (error) {
+      console.error('❌ Erro ao atualizar resposta em áudio:', error);
+      throw error;
+    }
+  }
+
+  // Atualizar configuração de resposta única por contato
+  async updateSingleReply(workflowId, userId, singleReplyConfig = {}) {
+    try {
+      console.log(`🔄 Iniciando atualização de resposta única para workflow ${workflowId}, usuário ${userId}`);
+
+      const enabled = singleReplyConfig.enabled === true;
+
+      const workflow = await AIWorkflow.findOne({
+        _id: workflowId,
+        userId
+      });
+
+      if (!workflow) {
+        throw new Error('Workflow não encontrado ou não pertence ao usuário');
+      }
+
+      console.log(`📋 Workflow encontrado: ${workflow.workflowName} (ID: ${workflow.workflowId})`);
+      console.log(`🔁 Responder uma única vez: ${enabled ? 'Ativado' : 'Desativado'}`);
+
+      const n8nResponse = await axios.get(
+        `${this.baseUrl}/api/v1/workflows/${workflow.workflowId}`,
+        { headers: this.headers }
+      );
+
+      const n8nWorkflow = n8nResponse.data;
+
+      const updatedNodes = n8nWorkflow.nodes.map(node => {
+        if (node.type === 'n8n-nodes-base.set' && node.name === 'Edit Fields5') {
+          const updatedNode = { ...node };
+          if (enabled) {
+            delete updatedNode.disabled;
+          } else {
+            updatedNode.disabled = true;
+          }
+          return updatedNode;
+        }
+
+        if (node.type === 'n8n-nodes-base.if' && node.name === 'If') {
+          const updatedNode = { ...node };
+          if (enabled) {
+            delete updatedNode.disabled;
+          } else {
+            updatedNode.disabled = true;
+          }
+          return updatedNode;
+        }
+
+        if (node.type === 'n8n-nodes-base.redis' && node.name === 'Redis') {
+          const updatedNode = {
+            ...node,
+            parameters: {
+              ...node.parameters,
+              key: "={{ $json.BootName }}_{{ $json.telefoneCliente }}_block"
+            }
+          };
+
+          if (enabled) {
+            delete updatedNode.disabled;
+          } else {
+            updatedNode.disabled = true;
+          }
+          return updatedNode;
+        }
+
+        return node;
+      });
+
+      const updatePayload = {
+        name: n8nWorkflow.name,
+        nodes: updatedNodes,
+        connections: n8nWorkflow.connections,
+        settings: n8nWorkflow.settings || {},
+        staticData: n8nWorkflow.staticData || null
+      };
+
+      await axios.put(
+        `${this.baseUrl}/api/v1/workflows/${workflow.workflowId}`,
+        updatePayload,
+        { headers: this.headers }
+      );
+
+      workflow.singleReply = {
+        enabled
+      };
+      await workflow.save();
+
+      console.log('✅ Configuração de resposta única atualizada com sucesso!');
+      return workflow;
+    } catch (error) {
+      console.error('❌ Erro ao atualizar resposta única:', error);
+      throw error;
+    }
+  }
+
   // Atualizar prompt do workflow
   async updatePrompt(workflowId, userId, newPrompt) {
     try {
@@ -621,7 +932,7 @@ class AIWorkflowService {
               ...node.parameters,
               options: {
                 ...node.parameters.options,
-                systemMessage: newPrompt
+                systemMessage: this.ensureExpression(newPrompt)
               }
             }
           };

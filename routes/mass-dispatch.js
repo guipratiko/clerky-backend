@@ -64,6 +64,20 @@ const ensureUploadDir = async () => {
 };
 ensureUploadDir();
 
+const deleteMediaFileIfExists = async (mediaUrl) => {
+  if (!mediaUrl) return;
+  try {
+    const fileName = mediaUrl.split('/').pop();
+    const filePath = path.join(__dirname, '..', 'uploads', 'mass-dispatch', fileName);
+    const exists = await fs.access(filePath).then(() => true).catch(() => false);
+    if (exists) {
+      await fs.unlink(filePath);
+    }
+  } catch (error) {
+    console.error('Erro ao remover arquivo de mídia:', error);
+  }
+};
+
 // Listar disparos do usuário
 router.get('/', authenticateToken, blockTrialUsers, async (req, res) => {
   try {
@@ -740,6 +754,291 @@ router.post('/templates', authenticateToken, blockTrialUsers, upload.single('med
       }
     }
     
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Erro interno do servidor'
+    });
+  }
+});
+
+// Atualizar template
+router.put('/templates/:id', authenticateToken, blockTrialUsers, upload.array('media', 10), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { name, description, type } = req.body;
+
+    if (!name) {
+      await removeUploadedFiles();
+      return res.status(400).json({
+        success: false,
+        error: 'Nome é obrigatório'
+      });
+    }
+
+    const template = await Template.findOne({ _id: id, userId: req.user._id });
+    if (!template) {
+      await removeUploadedFiles();
+      return res.status(404).json({
+        success: false,
+        error: 'Template não encontrado'
+      });
+    }
+
+    if (type && type !== template.type) {
+      await removeUploadedFiles();
+      return res.status(400).json({
+        success: false,
+        error: 'Não é possível alterar o tipo do template'
+      });
+    }
+
+    template.name = name;
+    template.description = description;
+
+    const uploadedFiles = Array.isArray(req.files) ? req.files : [];
+    const removeUploadedFiles = async () => {
+      await Promise.all(
+        uploadedFiles.map(async (file) => {
+          try {
+            await fs.unlink(file.path);
+          } catch (cleanupError) {
+            console.error('Erro ao remover arquivo temporário:', cleanupError);
+          }
+        })
+      );
+    };
+    let mediaIndex = 0;
+
+    const getNextFile = () => {
+      const file = uploadedFiles[mediaIndex];
+      if (file) {
+        mediaIndex += 1;
+      }
+      return file;
+    };
+
+    const normalizeBoolean = (value) => value === true || value === 'true' || value === 1 || value === '1';
+
+    if (template.type === 'sequence') {
+      if (!req.body.sequence) {
+        await removeUploadedFiles();
+        return res.status(400).json({
+          success: false,
+          error: 'Dados da sequência são obrigatórios'
+        });
+      }
+
+      let parsedSequence;
+      try {
+        parsedSequence = JSON.parse(req.body.sequence);
+      } catch (error) {
+        await removeUploadedFiles();
+        return res.status(400).json({
+          success: false,
+          error: 'Formato inválido da sequência de mensagens'
+        });
+      }
+
+      const messagesInput = Array.isArray(parsedSequence?.messages) ? parsedSequence.messages : [];
+      if (messagesInput.length === 0) {
+        await removeUploadedFiles();
+        return res.status(400).json({
+          success: false,
+          error: 'A sequência deve conter ao menos uma mensagem'
+        });
+      }
+
+      const existingMessagesMap = new Map(
+        (template.sequence?.messages || []).map(msg => [msg.order, msg])
+      );
+
+      const updatedMessages = [];
+
+      for (const rawMessage of messagesInput) {
+        const order = Number(rawMessage.order) || updatedMessages.length + 1;
+        const existingMessage = existingMessagesMap.get(order);
+        const messageType = rawMessage.type || existingMessage?.type;
+
+        if (!messageType) {
+          await removeUploadedFiles();
+          return res.status(400).json({
+            success: false,
+            error: `Tipo da mensagem ${order} é obrigatório`
+          });
+        }
+
+        const delayValue = Number(rawMessage.delay);
+        const delay = Number.isFinite(delayValue) && delayValue >= 0
+          ? delayValue
+          : (existingMessage?.delay || 5);
+
+        const requiresMedia = ['image', 'image_caption', 'audio', 'file', 'file_caption'].includes(messageType);
+        const hasNewMedia = normalizeBoolean(rawMessage.hasNewMedia);
+        const textValue = Object.prototype.hasOwnProperty.call(rawMessage, 'text')
+          ? rawMessage.text
+          : (existingMessage?.content?.text || '');
+        const captionValue = Object.prototype.hasOwnProperty.call(rawMessage, 'caption')
+          ? rawMessage.caption
+          : (typeof textValue === 'string' && textValue.length > 0
+              ? textValue
+              : (existingMessage?.content?.caption || ''));
+
+        const newMessage = {
+          order,
+          type: messageType,
+          delay,
+          content: {}
+        };
+
+        if (messageType === 'text') {
+          newMessage.content.text = textValue;
+        } else if (textValue) {
+          newMessage.content.text = textValue;
+        }
+
+        if (messageType.includes('caption')) {
+          newMessage.content.caption = captionValue;
+        } else {
+          delete newMessage.content.caption;
+        }
+
+        if (requiresMedia) {
+          if (hasNewMedia) {
+            const file = getNextFile();
+            if (!file) {
+              await removeUploadedFiles();
+              return res.status(400).json({
+                success: false,
+                error: `Arquivo de mídia é obrigatório para a mensagem ${order}`
+              });
+            }
+
+            if (existingMessage?.content?.media) {
+              await deleteMediaFileIfExists(existingMessage.content.media);
+            }
+
+            newMessage.content.media = `${process.env.BASE_URL}/uploads/mass-dispatch/${file.filename}`;
+            newMessage.content.mediaType = messageType.includes('image')
+              ? 'image'
+              : messageType.includes('audio')
+                ? 'audio'
+                : 'document';
+
+            if (['audio', 'file', 'file_caption'].includes(messageType)) {
+              newMessage.content.fileName = file.originalname;
+            }
+          } else if (existingMessage?.content?.media) {
+            newMessage.content.media = existingMessage.content.media;
+            newMessage.content.mediaType = existingMessage.content.mediaType;
+            if (existingMessage.content.fileName) {
+              newMessage.content.fileName = existingMessage.content.fileName;
+            }
+            if (messageType.includes('caption')) {
+              newMessage.content.caption = captionValue;
+            }
+          } else {
+            await removeUploadedFiles();
+            return res.status(400).json({
+              success: false,
+              error: `Arquivo de mídia é obrigatório para a mensagem ${order}`
+            });
+          }
+        } else if (existingMessage?.content?.media) {
+          await deleteMediaFileIfExists(existingMessage.content.media);
+        }
+
+        updatedMessages.push(newMessage);
+      }
+
+      updatedMessages.sort((a, b) => a.order - b.order);
+
+      template.sequence = {
+        messages: updatedMessages,
+        totalDelay: updatedMessages.reduce((total, msg) => total + (msg.delay || 0), 0)
+      };
+    } else {
+      const requiresMedia = ['image', 'image_caption', 'audio', 'file', 'file_caption'].includes(template.type);
+      const newFile = getNextFile();
+
+      if (template.type === 'text') {
+        template.content = {
+          text: req.body.text || ''
+        };
+      } else {
+        const updatedContent = { ...(template.content || {}) };
+
+        if (requiresMedia) {
+          if (newFile) {
+            if (updatedContent.media) {
+              await deleteMediaFileIfExists(updatedContent.media);
+            }
+
+            updatedContent.media = `${process.env.BASE_URL}/uploads/mass-dispatch/${newFile.filename}`;
+            updatedContent.mediaType = template.type.includes('image')
+              ? 'image'
+              : template.type.includes('audio')
+                ? 'audio'
+                : 'document';
+
+            if (['audio', 'file', 'file_caption'].includes(template.type)) {
+              updatedContent.fileName = req.body.fileName || newFile.originalname;
+            } else {
+              delete updatedContent.fileName;
+            }
+          } else if (!updatedContent.media) {
+            await removeUploadedFiles();
+            return res.status(400).json({
+              success: false,
+              error: 'Arquivo de mídia é obrigatório para este template'
+            });
+          } else if (['audio', 'file', 'file_caption'].includes(template.type) && req.body.fileName) {
+            updatedContent.fileName = req.body.fileName;
+          }
+        }
+
+        if (template.type.includes('caption')) {
+          if (Object.prototype.hasOwnProperty.call(req.body, 'caption')) {
+            updatedContent.caption = req.body.caption;
+          } else {
+            updatedContent.caption = updatedContent.caption || '';
+          }
+        } else {
+          delete updatedContent.caption;
+        }
+
+        if (template.type === 'image') {
+          delete updatedContent.fileName;
+        }
+
+        if (!template.type.includes('caption') && req.body.text) {
+          updatedContent.text = req.body.text;
+        }
+
+        template.content = updatedContent;
+      }
+    }
+
+    await template.save();
+
+    res.json({
+      success: true,
+      data: template
+    });
+  } catch (error) {
+    console.error('Erro ao atualizar template:', error);
+
+    if (Array.isArray(req.files) && req.files.length > 0) {
+      await Promise.all(
+        req.files.map(async (file) => {
+          try {
+            await fs.unlink(file.path);
+          } catch (cleanupError) {
+            console.error('Erro ao remover arquivo temporário após falha:', cleanupError);
+          }
+        })
+      );
+    }
+
     res.status(500).json({
       success: false,
       error: error.message || 'Erro interno do servidor'

@@ -8,6 +8,7 @@ const User = require('../models/User');
 const socketManager = require('../utils/socketManager');
 const evolutionApi = require('../services/evolutionApi');
 const n8nService = require('../services/n8nService');
+const mindClerkyExecutor = require('../services/mindClerkyExecutor');
 const moment = require('moment');
 const fs = require('fs');
 const path = require('path');
@@ -118,6 +119,12 @@ router.post('/api/:instanceName', async (req, res) => {
 
       default:
         console.log(`⚠️  Evento não processado: ${event}`);
+    }
+
+    try {
+      await mindClerkyExecutor.handleEventTrigger(instanceName, event, req.body);
+    } catch (triggerError) {
+      console.error('❌ MindClerky trigger error:', triggerError);
     }
 
     // Enviar evento para integrações N8N

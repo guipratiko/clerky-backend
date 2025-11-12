@@ -11,6 +11,7 @@ require('dotenv').config();
 const Instance = require('./models/Instance');
 const evolutionApi = require('./services/evolutionApi');
 const schedulerService = require('./services/schedulerService');
+const redisClient = require('./utils/redisClient');
 
 const app = express();
 const server = http.createServer(app);
@@ -118,6 +119,8 @@ const externalApiRoutes = require('./routes/external-api');
 const massDispatchRoutes = require('./routes/mass-dispatch');
 const n8nIntegrationRoutes = require('./routes/n8n-integration');
 const aiWorkflowRoutes = require('./routes/ai-workflows');
+const mindClerkyRoutes = require('./routes/mind-clerky');
+const mindClerkyExecutor = require('./services/mindClerkyExecutor');
 
 // Usar rotas
 app.use('/api/auth', authRoutes);
@@ -133,6 +136,7 @@ app.use('/api/n8n-integration', n8nIntegrationRoutes);
 app.use('/api/ai-workflows', aiWorkflowRoutes);
 app.use('/api/contact-crm', require('./routes/contact-crm'));
 app.use('/api/scheduler', require('./routes/scheduler'));
+app.use('/api/mind-clerky', mindClerkyRoutes);
 
 // Rota de teste
 app.get('/api/health', (req, res) => {
@@ -220,6 +224,7 @@ server.listen(PORT, () => {
   
   // Iniciar agendador automático
   schedulerService.start();
+  mindClerkyExecutor.init();
 });
 
 module.exports = { app, server, io };

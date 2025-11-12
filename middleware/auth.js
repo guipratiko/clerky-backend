@@ -76,6 +76,10 @@ const requireAdmin = (req, res, next) => {
 
 // Middleware para bloquear acesso de usuários em trial
 const blockTrialUsers = (req, res, next) => {
+  if (process.env.NODE_ENV !== 'production') {
+    return next();
+  }
+
   // Admins não são bloqueados
   if (req.user.role === 'admin') {
     return next();

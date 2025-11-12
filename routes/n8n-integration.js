@@ -243,7 +243,7 @@ router.get('/instances/list', async (req, res) => {
     const userId = req.user.id;
 
     const instances = await Instance.find({ userId })
-      .select('instanceName status phone createdAt')
+      .select('instanceName displayName status phone createdAt')
       .sort({ createdAt: -1 });
 
     res.json({

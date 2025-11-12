@@ -24,7 +24,7 @@ router.get('/', authenticateToken, async (req, res) => {
 // Criar novo workflow de IA
 router.post('/', authenticateToken, async (req, res) => {
   try {
-    const { instanceName, prompt, waitTime, kanbanTool } = req.body;
+    const { instanceName, prompt, waitTime, kanbanTool, audioReply, singleReply } = req.body;
     
     // Validações básicas
     if (!instanceName) {
@@ -57,9 +57,51 @@ router.post('/', authenticateToken, async (req, res) => {
       });
     }
 
+    if (audioReply) {
+      if (audioReply.enabled !== undefined && typeof audioReply.enabled !== 'boolean') {
+        return res.status(400).json({
+          success: false,
+          error: 'Campo enabled de audioReply deve ser booleano'
+        });
+      }
+
+      if (audioReply.voice !== undefined && typeof audioReply.voice !== 'string') {
+        return res.status(400).json({
+          success: false,
+          error: 'Campo voice de audioReply deve ser uma string'
+        });
+      }
+    }
+
+    if (singleReply && singleReply.enabled !== undefined && typeof singleReply.enabled !== 'boolean') {
+      return res.status(400).json({
+        success: false,
+        error: 'Campo enabled de singleReply deve ser booleano'
+      });
+    }
+
+    // Validar audioReply se fornecido
+    if (audioReply) {
+      if (audioReply.enabled !== undefined && typeof audioReply.enabled !== 'boolean') {
+        return res.status(400).json({
+          success: false,
+          error: 'Campo enabled de audioReply deve ser booleano'
+        });
+      }
+
+      if (audioReply.voice !== undefined && typeof audioReply.voice !== 'string') {
+        return res.status(400).json({
+          success: false,
+          error: 'Campo voice de audioReply deve ser uma string'
+        });
+      }
+    }
+
     const options = {
       waitTime,
-      kanbanTool
+      kanbanTool,
+      audioReply,
+      singleReply
     };
 
     const workflow = await aiWorkflowService.createAIWorkflow(req.user._id, instanceName, prompt, options);
@@ -219,6 +261,82 @@ router.put('/:id/kanban-tool', authenticateToken, async (req, res) => {
     });
   } catch (error) {
     console.error('Erro ao atualizar Kanban Tool:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Erro interno do servidor'
+    });
+  }
+});
+
+// Atualizar configuração de resposta em áudio
+router.put('/:id/audio-reply', authenticateToken, async (req, res) => {
+  try {
+    let { enabled, voice } = req.body;
+
+    if (enabled === undefined || enabled === null) {
+      enabled = false;
+    }
+
+    if (typeof enabled !== 'boolean') {
+      return res.status(400).json({
+        success: false,
+        error: 'enabled deve ser um valor booleano'
+      });
+    }
+
+    if (voice !== undefined && voice !== null && typeof voice !== 'string') {
+      return res.status(400).json({
+        success: false,
+        error: 'voice deve ser uma string'
+      });
+    }
+
+    const workflow = await aiWorkflowService.updateAudioReply(req.params.id, req.user._id, {
+      enabled,
+      voice
+    });
+
+    res.json({
+      success: true,
+      data: workflow,
+      message: enabled ? 'Resposta em áudio ativada com sucesso' : 'Resposta em áudio desativada com sucesso'
+    });
+  } catch (error) {
+    console.error('Erro ao atualizar resposta em áudio:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Erro interno do servidor'
+    });
+  }
+});
+
+// Atualizar configuração de resposta única por contato
+router.put('/:id/single-reply', authenticateToken, async (req, res) => {
+  try {
+    let { enabled } = req.body;
+
+    if (enabled === undefined || enabled === null) {
+      enabled = false;
+    }
+
+    if (typeof enabled !== 'boolean') {
+      return res.status(400).json({
+        success: false,
+        error: 'enabled deve ser um valor booleano'
+      });
+    }
+
+    const workflow = await aiWorkflowService.updateSingleReply(req.params.id, req.user._id, {
+      enabled
+    });
+
+    res.json({
+      success: true,
+      data: workflow,
+      message: enabled ? 'Resposta única ativada com sucesso' : 'Resposta única desativada com sucesso'
+    });
+  } catch (error) {
+    console.error('Erro ao atualizar resposta única:', error);
     res.status(500).json({
       success: false,
       error: error.message || 'Erro interno do servidor'
