@@ -164,7 +164,7 @@ router.get('/template-variables', authenticateToken, blockTrialUsers, async (req
 // Criar novo disparo
 router.post('/', authenticateToken, blockTrialUsers, async (req, res) => {
   try {
-    const { name, instanceName, template, settings, schedule } = req.body;
+    const { name, instanceName, template, templateId, settings, schedule } = req.body;
 
     if (!name || !instanceName || !template) {
       return res.status(400).json({
@@ -209,6 +209,7 @@ router.post('/', authenticateToken, blockTrialUsers, async (req, res) => {
       userId: req.user._id,
       instanceName,
       name,
+      templateId: templateId || template?._id || template?.id || null,
       template: processedTemplate,
       settings: {
         speed: settings?.speed || 'normal',
@@ -381,6 +382,30 @@ router.post('/:id/start', authenticateToken, blockTrialUsers, async (req, res) =
 
   } catch (error) {
     console.error('Erro ao iniciar disparo:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Erro interno do servidor'
+    });
+  }
+});
+
+// Retomar disparo
+router.post('/:id/resume', authenticateToken, blockTrialUsers, async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const dispatch = await MassDispatch.findOne({ _id: id, userId: req.user._id });
+    if (!dispatch) {
+      return res.status(404).json({
+        success: false,
+        error: 'Disparo não encontrado'
+      });
+    }
+
+    const result = await massDispatchService.resumeDispatch(id);
+    res.json(result);
+  } catch (error) {
+    console.error('Erro ao retomar disparo:', error);
     res.status(500).json({
       success: false,
       error: error.message || 'Erro interno do servidor'

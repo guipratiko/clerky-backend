@@ -1,4 +1,5 @@
 const MassDispatch = require('../models/MassDispatch');
+const Template = require('../models/Template');
 const evolutionApi = require('./evolutionApi');
 const phoneService = require('./phoneService');
 const socketManager = require('../utils/socketManager');
@@ -128,6 +129,8 @@ class MassDispatchService {
     if (dispatch.status !== 'ready') {
       throw new Error('Disparo não está pronto para execução');
     }
+
+    await this.refreshTemplateIfNeeded(dispatch);
 
     // Verificar se já existe um disparo ativo para esta instância
     if (this.activeDispatches.has(dispatch.instanceName)) {
@@ -612,6 +615,91 @@ class MassDispatchService {
       dispatchId: dispatch._id,
       reason
     });
+  }
+
+  /**
+   * Retoma um disparo pausado
+   * @param {string} dispatchId - ID do disparo
+   * @returns {object} - Resultado da retomada
+   */
+  async resumeDispatch(dispatchId) {
+    const dispatch = await MassDispatch.findById(dispatchId);
+    if (!dispatch) {
+      throw new Error('Disparo não encontrado');
+    }
+
+    if (dispatch.status !== 'paused') {
+      throw new Error('Disparo não está pausado');
+    }
+
+    if (this.activeDispatches.has(dispatch.instanceName)) {
+      throw new Error('Já existe um disparo ativo para esta instância');
+    }
+
+    if (!dispatch.isWithinSchedule()) {
+      throw new Error('Fora do horário permitido para retomada');
+    }
+
+    await this.refreshTemplateIfNeeded(dispatch);
+
+    dispatch.status = 'running';
+    dispatch.isActive = true;
+    dispatch.pausedAt = null;
+    dispatch.error = undefined;
+    await dispatch.save();
+
+    this.activeDispatches.set(dispatch.instanceName, dispatchId);
+    this.processDispatch(dispatchId);
+
+    socketManager.emitToUser(dispatch.userId, 'mass-dispatch-resumed', {
+      dispatchId: dispatch._id,
+      instanceName: dispatch.instanceName
+    });
+
+    return {
+      success: true,
+      message: 'Disparo retomado com sucesso'
+    };
+  }
+
+  /**
+   * Atualiza o template do disparo caso exista uma referência
+   * @param {import('../models/MassDispatch')} dispatch
+   */
+  async refreshTemplateIfNeeded(dispatch) {
+    if (!dispatch?.templateId) {
+      return;
+    }
+
+    try {
+      const templateDoc = await Template.findById(dispatch.templateId);
+      if (!templateDoc) {
+        return;
+      }
+
+      const templateObj = templateDoc.toObject();
+
+      if (templateObj.type === 'sequence') {
+        const sequence = templateObj.sequence || { messages: [], totalDelay: 0 };
+        dispatch.template = {
+          type: 'sequence',
+          sequence: {
+            messages: sequence.messages || [],
+            totalDelay: sequence.totalDelay || 0
+          }
+        };
+      } else {
+        dispatch.template = {
+          type: templateObj.type,
+          content: templateObj.content || {}
+        };
+      }
+
+      dispatch.markModified('template');
+      await dispatch.save();
+    } catch (error) {
+      console.error('Erro ao atualizar template do disparo:', error);
+    }
   }
 
   /**

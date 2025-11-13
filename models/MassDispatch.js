@@ -6,6 +6,11 @@ const massDispatchSchema = new mongoose.Schema({
     ref: 'User',
     required: true
   },
+  templateId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Template',
+    default: null
+  },
   instanceName: {
     type: String,
     required: true
