@@ -46,9 +46,20 @@ const deriveContactVariables = (contact = {}) => {
   };
 };
 
-const validateFlowStructure = (flowData = {}) => {
+const validateFlowStructure = (flowData = {}, requireNodes = false) => {
+  // Se requireNodes for true (ex: ao ativar fluxo), exige pelo menos um nó
+  // Se for false (ex: rascunho), permite fluxo vazio
+  if (requireNodes && (!Array.isArray(flowData.nodes) || flowData.nodes.length === 0)) {
+    throw createError('Fluxo precisa conter ao menos um nó para ser ativado.');
+  }
+
+  // Se não há nós, não precisa validar o resto
   if (!Array.isArray(flowData.nodes) || flowData.nodes.length === 0) {
-    throw createError('Fluxo precisa conter ao menos um nó.');
+    // Garantir que edges seja um array vazio se não há nós
+    if (!Array.isArray(flowData.edges)) {
+      flowData.edges = [];
+    }
+    return;
   }
 
   const nodeIds = new Set();
@@ -75,9 +86,12 @@ const validateFlowStructure = (flowData = {}) => {
     }
   });
 
-  const startTriggers = flowData.triggers || [];
-  if (startTriggers.length === 0) {
-    throw createError('Defina ao menos um gatilho para o fluxo.');
+  // Validar triggers apenas se requireNodes for true (ao ativar)
+  if (requireNodes) {
+    const startTriggers = flowData.triggers || [];
+    if (startTriggers.length === 0) {
+      throw createError('Defina ao menos um gatilho para o fluxo.');
+    }
   }
 
   if (!flowData.instanceName) {
@@ -121,7 +135,9 @@ const getFlowById = async (flowId, userId) => {
 };
 
 const createFlow = async (payload, user) => {
-  validateFlowStructure(payload);
+  // Permitir fluxos vazios em rascunhos
+  const isDraft = payload.status === 'draft' || !payload.status;
+  validateFlowStructure(payload, !isDraft);
 
   const instance = await Instance.findOne({
     instanceName: payload.instanceName,
@@ -158,7 +174,10 @@ const updateFlow = async (flowId, payload, user) => {
     flow.status = payload.status;
   }
 
-  validateFlowStructure(payload);
+  // Permitir fluxos vazios em rascunhos, mas exigir nós se estiver ativando
+  const isDraft = (payload.status || flow.status) === 'draft';
+  const isActivating = flow.status !== 'active' && payload.status === 'active';
+  validateFlowStructure(payload, isActivating);
 
   flow.name = payload.name ?? flow.name;
   flow.slug = payload.slug ?? flow.slug;
@@ -191,7 +210,8 @@ const changeFlowStatus = async (flowId, status, user) => {
   const flow = await getFlowById(flowId, user._id);
 
   if (status === 'active') {
-    validateFlowStructure(flow);
+    // Exigir pelo menos um nó ao ativar o fluxo
+    validateFlowStructure(flow, true);
     flow.lastPublishedAt = new Date();
     flow.publishedBy = user._id;
 
