@@ -23,6 +23,14 @@ const unitToMs = {
   days: 24 * 60 * 60 * 1000
 };
 
+// Função helper para obter o offset de um timezone em minutos
+const getTimezoneOffset = (timezone) => {
+  const now = new Date();
+  const utc = new Date(now.toLocaleString('en-US', { timeZone: 'UTC' }));
+  const tz = new Date(now.toLocaleString('en-US', { timeZone: timezone }));
+  return (utc.getTime() - tz.getTime()) / 60000;
+};
+
 const log = (...args) => {
   console.log('🧠 MindClerky:', ...args);
 };
@@ -202,12 +210,94 @@ const registerWaitForResponse = async (execution, nodeId, message = 'Aguardando 
 
 const handleDelayNode = async (node, execution, flow) => {
   const data = node.data || {};
-  const duration = Number(data.duration || 0);
-  const unit = (data.unit || 'seconds').toLowerCase();
-  const multiplier = unitToMs[unit] || unitToMs.seconds;
-  const delayMs = duration * multiplier;
+  const delayType = data.delayType || 'duration';
+  let delayMs = 0;
+  let resumeAt;
+
+  if (delayType === 'exactTime') {
+    // Calcular delay baseado em hora exata
+    const exactTime = data.exactTime || '22:00';
+    const timezone = data.timezone || 'America/Sao_Paulo';
+    
+    // Parse da hora (formato HH:MM)
+    const [targetHours, targetMinutes] = exactTime.split(':').map(Number);
+    
+    // Obter data/hora atual
+    const now = new Date();
+    
+    // Obter data/hora atual no timezone especificado
+    const formatter = new Intl.DateTimeFormat('en-CA', {
+      timeZone: timezone,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false
+    });
+    
+    const parts = formatter.formatToParts(now);
+    const nowInTimezone = {
+      year: parseInt(parts.find(p => p.type === 'year').value),
+      month: parseInt(parts.find(p => p.type === 'month').value) - 1, // month é 0-indexed
+      day: parseInt(parts.find(p => p.type === 'day').value),
+      hour: parseInt(parts.find(p => p.type === 'hour').value),
+      minute: parseInt(parts.find(p => p.type === 'minute').value)
+    };
+    
+    // Verificar se a hora já passou hoje no timezone
+    const currentTimeInTZ = nowInTimezone.hour * 60 + nowInTimezone.minute;
+    const targetTimeInTZ = targetHours * 60 + targetMinutes;
+    
+    // Determinar a data alvo (hoje ou amanhã)
+    let targetDay = nowInTimezone.day;
+    let targetMonth = nowInTimezone.month;
+    let targetYear = nowInTimezone.year;
+    
+    if (targetTimeInTZ <= currentTimeInTZ) {
+      // Hora já passou, agendar para amanhã
+      const tomorrow = new Date(targetYear, targetMonth, targetDay + 1);
+      targetDay = tomorrow.getDate();
+      targetMonth = tomorrow.getMonth();
+      targetYear = tomorrow.getFullYear();
+    }
+    
+    // Criar a data alvo no timezone especificado
+    // Usar Date.UTC para criar uma data UTC e depois ajustar para o timezone
+    const targetDateUTC = new Date(Date.UTC(
+      targetYear,
+      targetMonth,
+      targetDay,
+      targetHours,
+      targetMinutes,
+      0,
+      0
+    ));
+    
+    // Calcular o offset do timezone para a data alvo
+    // Criar uma data de teste no timezone para obter o offset
+    const testDate = new Date(targetDateUTC);
+    const utcStr = testDate.toLocaleString('en-US', { timeZone: 'UTC' });
+    const tzStr = testDate.toLocaleString('en-US', { timeZone: timezone });
+    const utcDate = new Date(utcStr);
+    const tzDate = new Date(tzStr);
+    const offsetMs = utcDate.getTime() - tzDate.getTime();
+    
+    // Ajustar a data alvo: subtrair o offset para converter de UTC para o timezone
+    const targetDate = new Date(targetDateUTC.getTime() - offsetMs);
+    
+    resumeAt = targetDate;
+    delayMs = Math.max(0, targetDate.getTime() - now.getTime());
+  } else {
+    // Delay baseado em duração (comportamento original)
+    const duration = Number(data.duration || 0);
+    const unit = (data.unit || 'seconds').toLowerCase();
+    const multiplier = unitToMs[unit] || unitToMs.seconds;
+    delayMs = duration * multiplier;
+    resumeAt = new Date(Date.now() + delayMs);
+  }
+  
   const nextNodeId = getNextNodeId(flow, node.id);
-  const resumeAt = new Date(Date.now() + delayMs);
 
   const historyEntry = {
     nodeId: node.id,
@@ -358,6 +448,10 @@ const handleConditionNode = async (node, execution, flow) => {
         matched = NO_KEYWORDS.some((keyword) =>
           normalizedText === keyword || normalizedText.startsWith(`${keyword} `)
         );
+        break;
+      case 'message_any':
+        // Qualquer mensagem satisfaz esta condição
+        matched = hasMessage && !alreadyConsumed;
         break;
       default:
         if (rule.expression) {
@@ -564,12 +658,35 @@ const handleWhatsAppMessageNode = async (node, execution, flow) => {
 
 const handleMassDispatchNode = async (node, execution, flow) => {
   const data = node.data || {};
+  
+  // Preparar settings com velocidade e agendamento
+  // Os dados vêm de node.data que já é o config (reactFlowNodeToFlowNode coloca config em data)
+  const settings = {
+    speed: data.settings?.speed || 'normal',
+    validateNumbers: data.settings?.validateNumbers !== false,
+    removeNinthDigit: data.settings?.removeNinthDigit !== false,
+    personalization: data.settings?.personalization || {
+      enabled: true,
+      defaultName: 'Cliente'
+    },
+    autoDelete: {
+      enabled: data.settings?.autoDelete?.enabled || false,
+      delaySeconds: data.settings?.autoDelete?.delaySeconds || 3600
+    },
+    schedule: data.scheduleEnabled ? {
+      enabled: true,
+      startDateTime: data.scheduleDate && data.scheduleTime ? 
+        new Date(`${data.scheduleDate}T${data.scheduleTime}`).toISOString() : null,
+      timezone: data.scheduleTimezone || 'America/Sao_Paulo'
+    } : (data.settings?.schedule || { enabled: false })
+  };
+
   const dispatch = await massDispatchService.createDispatch({
     userId: flow.ownerId,
     instanceName: execution.instanceName,
     name: node.name || `Disparo ${Date.now()}`,
     template: data.template || {},
-    settings: data.settings || {}
+    settings: settings
   });
 
   const nextNodeId = getNextNodeId(flow, node.id);

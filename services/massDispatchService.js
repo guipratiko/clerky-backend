@@ -9,6 +9,7 @@ class MassDispatchService {
   constructor() {
     this.activeDispatches = new Map(); // instanceName -> dispatchId
     this.timers = new Map(); // dispatchId -> timer
+    this.deleteTimers = new Map(); // `${dispatchId}-${numberIndex}` -> timer
   }
 
   /**
@@ -228,6 +229,45 @@ class MassDispatchService {
       // Atualizar status APENAS após confirmação de envio
       currentNumber.status = 'sent';
       currentNumber.sentAt = new Date();
+      
+      // Armazenar informações da mensagem para exclusão automática
+      // Para sequências, usar a última mensagem enviada
+      let messageResult = sendResult;
+      if (Array.isArray(sendResult) && sendResult.length > 0) {
+        // Se for sequência, pegar o último resultado bem-sucedido
+        const successfulResults = sendResult.filter(r => r.success && r.result);
+        if (successfulResults.length > 0) {
+          messageResult = successfulResults[successfulResults.length - 1].result;
+        }
+      }
+      
+      if (messageResult && (messageResult.key || messageResult.id)) {
+        currentNumber.messageId = messageResult.key?.id || messageResult.id;
+        currentNumber.remoteJid = messageResult.key?.remoteJid || `${currentNumber.formatted}@s.whatsapp.net`;
+        
+        // Agendar exclusão automática se habilitada
+        if (dispatch.settings?.autoDelete?.enabled) {
+          const delaySeconds = dispatch.settings.autoDelete.delaySeconds || 3600;
+          const delayMs = delaySeconds * 1000;
+          
+          const numberIndex = dispatch.currentIndex;
+          const deleteTimer = setTimeout(async () => {
+            try {
+              // Recarregar dispatch para ter dados atualizados
+              const updatedDispatch = await MassDispatch.findById(dispatch._id);
+              if (updatedDispatch && updatedDispatch.numbers[numberIndex]) {
+                await this.deleteMessage(updatedDispatch, updatedDispatch.numbers[numberIndex], numberIndex);
+              }
+            } catch (error) {
+              console.error(`Erro ao deletar mensagem automaticamente:`, error);
+            }
+          }, delayMs);
+          
+          const timerKey = `${dispatch._id}-${numberIndex}`;
+          this.deleteTimers.set(timerKey, deleteTimer);
+          currentNumber.deleteScheduled = true;
+        }
+      }
       
       // Salvar no banco ANTES de continuar
       dispatch.currentIndex++;
@@ -819,6 +859,50 @@ class MassDispatchService {
     }
 
     return nextRun;
+  }
+
+  /**
+   * Deleta uma mensagem enviada
+   * @param {object} dispatch - Disparo
+   * @param {object} numberData - Dados do número
+   * @param {number} numberIndex - Índice do número no array
+   */
+  async deleteMessage(dispatch, numberData, numberIndex) {
+    try {
+      if (!numberData.messageId || !numberData.remoteJid) {
+        console.log(`⚠️ Não é possível deletar mensagem: messageId ou remoteJid não encontrado`);
+        return;
+      }
+
+      if (numberData.deletedAt) {
+        console.log(`⚠️ Mensagem já foi deletada anteriormente`);
+        return;
+      }
+
+      await evolutionApi.deleteMessageForEveryone(
+        dispatch.instanceName,
+        numberData.messageId,
+        numberData.remoteJid,
+        true,
+        null
+      );
+
+      // Atualizar status no banco
+      numberData.deletedAt = new Date();
+      await dispatch.save();
+
+      console.log(`✅ Mensagem deletada automaticamente para ${numberData.formatted}`);
+
+      // Limpar timer
+      const timerKey = `${dispatch._id}-${numberIndex}`;
+      if (this.deleteTimers.has(timerKey)) {
+        this.deleteTimers.delete(timerKey);
+      }
+
+    } catch (error) {
+      console.error(`❌ Erro ao deletar mensagem para ${numberData.formatted}:`, error);
+      // Não atualizar deletedAt em caso de erro, para permitir retry
+    }
   }
 
   /**

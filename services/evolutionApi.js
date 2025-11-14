@@ -332,6 +332,28 @@ class EvolutionApiService {
       throw new Error(error.response?.data?.message || 'Erro ao definir presença');
     }
   }
+
+  // Deletar mensagem para todos
+  async deleteMessageForEveryone(instanceName, messageId, remoteJid, fromMe = true, participant = null) {
+    try {
+      const payload = {
+        id: messageId,
+        remoteJid: remoteJid,
+        fromMe: fromMe,
+        ...(participant && { participant: participant })
+      };
+
+      const response = await axios.delete(`${this.apiUrl}/chat/deleteMessageForEveryone/${instanceName}`, {
+        headers: this.getHeaders(),
+        data: payload
+      });
+
+      return response.data;
+    } catch (error) {
+      console.error('Erro ao deletar mensagem:', error.response?.data || error.message);
+      throw new Error(error.response?.data?.message || 'Erro ao deletar mensagem');
+    }
+  }
 }
 
 module.exports = new EvolutionApiService();

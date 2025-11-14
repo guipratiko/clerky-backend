@@ -174,14 +174,16 @@ router.post('/', authenticateToken, blockTrialUsers, async (req, res) => {
     }
 
     // Preparar dados de agendamento
+    // schedule pode vir diretamente ou dentro de settings.schedule
     let scheduleData = { enabled: false };
-    if (schedule && schedule.enabled) {
+    const scheduleToUse = schedule || settings?.schedule;
+    if (scheduleToUse && scheduleToUse.enabled) {
       scheduleData = {
         enabled: true,
-        startDateTime: schedule.startDateTime,
-        pauseDateTime: schedule.pauseDateTime,
-        resumeDateTime: schedule.resumeDateTime,
-        timezone: schedule.timezone || 'America/Sao_Paulo'
+        startDateTime: scheduleToUse.startDateTime ? new Date(scheduleToUse.startDateTime) : null,
+        pauseDateTime: scheduleToUse.pauseDateTime ? new Date(scheduleToUse.pauseDateTime) : null,
+        resumeDateTime: scheduleToUse.resumeDateTime ? new Date(scheduleToUse.resumeDateTime) : null,
+        timezone: scheduleToUse.timezone || 'America/Sao_Paulo'
       };
     }
 
@@ -219,6 +221,10 @@ router.post('/', authenticateToken, blockTrialUsers, async (req, res) => {
         personalization: {
           enabled: true, // Sempre ativo
           defaultName: settings?.personalization?.defaultName || 'Cliente'
+        },
+        autoDelete: {
+          enabled: settings?.autoDelete?.enabled || false,
+          delaySeconds: settings?.autoDelete?.delaySeconds || 3600
         }
       },
       numbers: [],

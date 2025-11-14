@@ -72,7 +72,11 @@ const massDispatchSchema = new mongoose.Schema({
       default: 'pending'
     },
     sentAt: Date,
-    error: String
+    error: String,
+    messageId: String, // ID da mensagem enviada (para exclusão automática)
+    remoteJid: String, // JID do destinatário (para exclusão automática)
+    deleteScheduled: Boolean, // Se a exclusão foi agendada
+    deletedAt: Date // Quando a mensagem foi deletada
   }],
   settings: {
     speed: {
@@ -119,6 +123,17 @@ const massDispatchSchema = new mongoose.Schema({
       defaultName: {
         type: String,
         default: 'Cliente'
+      }
+    },
+    // Configurações de exclusão automática
+    autoDelete: {
+      enabled: {
+        type: Boolean,
+        default: false
+      },
+      delaySeconds: {
+        type: Number,
+        default: 3600 // 1 hora por padrão
       }
     }
   },
