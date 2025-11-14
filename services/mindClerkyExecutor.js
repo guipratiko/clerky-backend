@@ -1214,6 +1214,24 @@ const handleEventTrigger = async (instanceName, eventName, payload = {}) => {
 
     for (const flow of matchingFlows) {
       try {
+        // Verificar se já existe uma execução completed para este contato e fluxo
+        // Se existir, não criar nova execução (fluxo já foi finalizado)
+        const existingCompletedExecution = await MindClerkyExecution.findOne({
+          flowId: flow._id,
+          instanceName,
+          contactId: contactId || contactPhone,
+          status: 'completed'
+        }).sort({ createdAt: -1 });
+
+        if (existingCompletedExecution) {
+          log('MindClerky: Fluxo já foi finalizado para este contato, ignorando nova mensagem', {
+            flowId: flow._id.toString(),
+            contactId: contactId || contactPhone,
+            executionId: existingCompletedExecution._id.toString()
+          });
+          continue;
+        }
+
         const execution = await mindClerkyService.createExecution({
           flow,
           contactId: contactId || contactPhone || `contact-${Date.now()}`,
