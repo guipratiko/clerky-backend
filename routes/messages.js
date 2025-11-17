@@ -31,6 +31,9 @@ router.get('/:instanceName/:chatId', async (req, res) => {
 
     let query = { instanceName, chatId };
     
+    // Filtrar mensagens deletadas
+    query.isDeleted = { $ne: true };
+    
     // Filtro por data se especificado
     if (before) {
       query.timestamp = { $lt: new Date(before) };
@@ -139,22 +142,45 @@ router.post('/:instanceName/text', async (req, res) => {
 
 // Enviar mídia
 router.post('/:instanceName/media', upload.single('file'), async (req, res) => {
+  console.log('📤 ROTA ENVIAR MÍDIA CHAMADA:', {
+    instanceName: req.params.instanceName,
+    body: req.body,
+    file: req.file ? {
+      originalname: req.file.originalname,
+      mimetype: req.file.mimetype,
+      size: req.file.size,
+      hasBuffer: !!req.file.buffer
+    } : 'nenhum arquivo'
+  });
+
   try {
     const { instanceName } = req.params;
     const { number, caption, mediaType } = req.body;
     const file = req.file;
 
     if (!number || !file) {
+      console.error('❌ Parâmetros faltando:', { number: !!number, file: !!file });
       return res.status(400).json({
         success: false,
         error: 'number e file são obrigatórios'
       });
     }
 
+    console.log('📋 Processando mídia:', {
+      number,
+      mediaType: mediaType || 'document',
+      caption: caption || 'sem legenda',
+      fileName: file.originalname,
+      mimeType: file.mimetype,
+      size: file.size
+    });
+
     // Converter arquivo para base64
     const media = file.buffer.toString('base64');
+    console.log('✅ Arquivo convertido para base64, tamanho:', media.length);
     
     // Enviar via Evolution API
+    console.log('📤 Enviando para Evolution API...');
     const response = await evolutionApi.sendMedia(
       instanceName, 
       number, 
@@ -163,6 +189,11 @@ router.post('/:instanceName/media', upload.single('file'), async (req, res) => {
       caption || '',
       file.originalname
     );
+    console.log('✅ Resposta da Evolution API:', {
+      success: !!response,
+      hasKey: !!response?.key,
+      messageId: response?.key?.id
+    });
 
     // Salvar no banco de dados
     const message = new Message({
@@ -185,24 +216,38 @@ router.post('/:instanceName/media', upload.single('file'), async (req, res) => {
     });
 
     await message.save();
+    console.log('✅ Mensagem salva no banco com sucesso');
 
     // Atualizar última mensagem no chat
-    await updateLastMessage(instanceName, number, {
-      content: caption || `📎 ${file.originalname}`,
-      timestamp: message.timestamp,
-      from: message.from,
-      fromMe: true,
-      messageType: mediaType || 'document'
-    });
+    try {
+      await updateLastMessage(instanceName, number, {
+        content: caption || `📎 ${file.originalname}`,
+        timestamp: message.timestamp,
+        from: message.from,
+        fromMe: true,
+        messageType: mediaType || 'document'
+      });
+      console.log('✅ Última mensagem do chat atualizada');
+    } catch (error) {
+      console.error('⚠️ Erro ao atualizar última mensagem do chat:', error);
+      // Não falhar se atualização do chat falhar
+    }
 
     // Notificar via WebSocket
-    socketManager.notifyNewMessage(instanceName, message);
+    try {
+      socketManager.notifyNewMessage(instanceName, message);
+      console.log('✅ Notificação WebSocket enviada');
+    } catch (error) {
+      console.error('⚠️ Erro ao notificar via WebSocket:', error);
+      // Não falhar se WebSocket falhar
+    }
 
     // Enviar webhook para N8N/AI Workflows
     try {
       await sendSentMessageToN8n(instanceName, message);
+      console.log('✅ Webhook N8N enviado');
     } catch (error) {
-      console.error('❌ Erro ao enviar webhook para N8N:', error);
+      console.error('⚠️ Erro ao enviar webhook para N8N:', error);
       // Não falhar se N8N falhar
     }
 
@@ -212,10 +257,17 @@ router.post('/:instanceName/media', upload.single('file'), async (req, res) => {
       evolutionResponse: response
     });
   } catch (error) {
-    console.error('Erro ao enviar mídia:', error);
+    console.error('❌ Erro ao enviar mídia:', error);
+    console.error('Detalhes do erro:', {
+      message: error.message,
+      stack: error.stack,
+      response: error.response?.data,
+      status: error.response?.status
+    });
     res.status(500).json({
       success: false,
-      error: error.message || 'Erro interno do servidor'
+      error: error.message || 'Erro interno do servidor',
+      details: process.env.NODE_ENV === 'development' ? error.stack : undefined
     });
   }
 });
@@ -663,6 +715,9 @@ router.post('/:instanceName/search', async (req, res) => {
     const { query, chatId, messageType, limit = 50, offset = 0 } = req.body;
 
     let searchQuery = { instanceName };
+    
+    // Filtrar mensagens deletadas
+    searchQuery.isDeleted = { $ne: true };
 
     if (chatId) searchQuery.chatId = chatId;
     if (messageType) searchQuery.messageType = messageType;
