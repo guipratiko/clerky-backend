@@ -819,7 +819,18 @@ async function processReceivedAudio(audioMessage, instanceName) {
     fs.writeFileSync(filePath, audioBuffer);
 
     // Construir URL de acesso
-    const audioUrl = `${process.env.BASE_URL || 'http://localhost:4500'}/uploads/audio/${fileName}`;
+    let baseUrl = process.env.BASE_URL;
+    if (!baseUrl && process.env.WEBHOOK_URL) {
+      baseUrl = process.env.WEBHOOK_URL.replace('/webhook', '');
+    }
+    // Se estiver em produção, usar URL de produção
+    if (process.env.NODE_ENV === 'production' && !baseUrl?.includes('clerky.com.br')) {
+      baseUrl = 'https://back.clerky.com.br';
+    }
+    if (!baseUrl) {
+      baseUrl = 'http://localhost:4331';
+    }
+    const audioUrl = `${baseUrl}/uploads/audio/${fileName}`;
 
     console.log(`✅ Áudio recebido processado: ${fileName} (${audioBuffer.length} bytes)`);
 
