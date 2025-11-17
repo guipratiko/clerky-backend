@@ -9,6 +9,8 @@ const { v4: uuidv4 } = require('uuid');
 const fs = require('fs');
 const path = require('path');
 
+console.log('✅ Rotas de mensagens carregadas');
+
 // Importar função para enviar webhook para N8N
 const { sendSentMessageToN8n } = require('./webhook');
 
@@ -516,15 +518,37 @@ router.put('/:instanceName/:chatId/read', async (req, res) => {
 
 // Deletar mensagem
 router.delete('/:instanceName/:messageId', async (req, res) => {
+  console.log('🗑️ ========== ROTA DELETE MENSAGEM CHAMADA ==========');
+  console.log('📥 Request recebido:', {
+    method: req.method,
+    url: req.url,
+    originalUrl: req.originalUrl,
+    path: req.path,
+    params: req.params,
+    body: req.body,
+    query: req.query,
+    headers: {
+      'content-type': req.headers['content-type'],
+      'authorization': req.headers['authorization'] ? 'Bearer ***' : 'não fornecido'
+    }
+  });
+  console.log('🗑️ ================================================');
+  
   try {
     const { instanceName, messageId } = req.params;
+    // Para DELETE, o body pode vir vazio, então vamos tentar pegar de query também
+    const deleteForEveryone = req.body?.deleteForEveryone || req.query?.deleteForEveryone === 'true' || false;
+    
+    console.log('📋 Parâmetros processados:', {
+      instanceName,
+      messageId,
+      deleteForEveryone,
+      bodyType: typeof req.body,
+      bodyKeys: req.body ? Object.keys(req.body) : 'body vazio'
+    });
 
-    // Marcar como deletada no banco
-    const message = await Message.findOneAndUpdate(
-      { instanceName, messageId },
-      { isDeleted: true },
-      { new: true }
-    );
+    // Buscar a mensagem
+    const message = await Message.findOne({ instanceName, messageId });
 
     if (!message) {
       return res.status(404).json({
@@ -532,6 +556,61 @@ router.delete('/:instanceName/:messageId', async (req, res) => {
         error: 'Mensagem não encontrada'
       });
     }
+
+    // Se deleteForEveryone for true, deletar via Evolution API
+    if (deleteForEveryone && message.fromMe) {
+      try {
+        // Garantir que messageId seja uma string
+        let finalMessageId = messageId;
+        if (typeof messageId === 'object' && messageId !== null) {
+          // Se for um objeto, tentar extrair o ID serializado ou usar toString
+          finalMessageId = messageId._serialized || messageId.id || messageId.toString();
+        } else if (typeof messageId !== 'string') {
+          finalMessageId = String(messageId);
+        }
+        
+        // Verificar se é um grupo (contém @g.us) para incluir participant
+        const isGroup = message.chatId && message.chatId.includes('@g.us');
+        const participant = isGroup ? (message.from || message.chatId) : null;
+        
+        console.log('🗑️ Tentando deletar mensagem via Evolution API:', {
+          instanceName,
+          messageId: finalMessageId,
+          originalMessageId: messageId,
+          chatId: message.chatId,
+          fromMe: true,
+          participant,
+          isGroup
+        });
+        
+        const deleteResult = await evolutionApi.deleteMessageForEveryone(
+          instanceName,
+          finalMessageId,
+          message.chatId,
+          true,
+          participant
+        );
+        
+        console.log('✅ Mensagem deletada via Evolution API:', deleteResult);
+      } catch (error) {
+        console.error('❌ Erro ao deletar mensagem via Evolution API:', error);
+        console.error('Detalhes do erro:', {
+          message: error.message,
+          response: error.response?.data,
+          status: error.response?.status,
+          statusText: error.response?.statusText
+        });
+        // Retornar erro se a Evolution API falhar
+        return res.status(500).json({
+          success: false,
+          error: 'Erro ao deletar mensagem via WhatsApp: ' + (error.response?.data?.message || error.response?.data?.error || error.message)
+        });
+      }
+    }
+
+    // Marcar como deletada no banco
+    message.isDeleted = true;
+    await message.save();
 
     // Notificar via WebSocket
     socketManager.notifyMessageUpdate(instanceName, message);

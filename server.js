@@ -17,12 +17,36 @@ const app = express();
 const server = http.createServer(app);
 const io = socketIo(server, {
   cors: {
-    origin: [
-      process.env.FRONTEND_URL || "http://localhost:3500", 
-      process.env.FRONTEND_URL_ALT || "http://127.0.0.1:3500",
-      process.env.FRONTEND_URL_PROD || "https://front.clerky.com.br",
-      process.env.FRONTEND_URL_APP || "https://app.clerky.com.br"
-    ],
+    origin: function (origin, callback) {
+      // Permitir requisições sem origem (React Native/Expo)
+      if (!origin) {
+        return callback(null, true);
+      }
+      
+      const allowedOrigins = [
+        process.env.FRONTEND_URL || "http://localhost:3500", 
+        process.env.FRONTEND_URL_ALT || "http://127.0.0.1:3500",
+        process.env.FRONTEND_URL_PROD || "https://front.clerky.com.br",
+        process.env.FRONTEND_URL_APP || "https://app.clerky.com.br"
+      ];
+      
+      // Em desenvolvimento, permitir IPs locais
+      if (process.env.NODE_ENV !== 'production') {
+        if (origin.startsWith('http://192.168.') || 
+            origin.startsWith('http://10.0.') || 
+            origin.startsWith('http://172.') ||
+            origin.includes('localhost') ||
+            origin.includes('127.0.0.1')) {
+          return callback(null, true);
+        }
+      }
+      
+      if (allowedOrigins.indexOf(origin) !== -1) {
+        callback(null, true);
+      } else {
+        callback(null, true); // Permitir em desenvolvimento
+      }
+    },
     methods: ["GET", "POST", "PUT", "DELETE"],
     credentials: true
   },
@@ -30,14 +54,41 @@ const io = socketIo(server, {
   transports: ['websocket', 'polling']
 });
 
-// Middleware
+// Middleware CORS
+// Permite requisições do frontend web e do app mobile (React Native)
 app.use(cors({
-  origin: [
-    process.env.FRONTEND_URL || "http://localhost:3500", 
-    process.env.FRONTEND_URL_ALT || "http://127.0.0.1:3500",
-    process.env.FRONTEND_URL_PROD || "https://front.clerky.com.br",
-    process.env.FRONTEND_URL_APP || "https://app.clerky.com.br"
-  ],
+  origin: function (origin, callback) {
+    // Permitir requisições sem origem (React Native/Expo, Postman, etc)
+    if (!origin) {
+      return callback(null, true);
+    }
+    
+    // Lista de origens permitidas
+    const allowedOrigins = [
+      process.env.FRONTEND_URL || "http://localhost:3500", 
+      process.env.FRONTEND_URL_ALT || "http://127.0.0.1:3500",
+      process.env.FRONTEND_URL_PROD || "https://front.clerky.com.br",
+      process.env.FRONTEND_URL_APP || "https://app.clerky.com.br"
+    ];
+    
+    // Em desenvolvimento, permitir qualquer origem do IP local
+    if (process.env.NODE_ENV !== 'production') {
+      if (origin.startsWith('http://192.168.') || 
+          origin.startsWith('http://10.0.') || 
+          origin.startsWith('http://172.') ||
+          origin.includes('localhost') ||
+          origin.includes('127.0.0.1')) {
+        return callback(null, true);
+      }
+    }
+    
+    // Verificar se a origem está na lista permitida
+    if (allowedOrigins.indexOf(origin) !== -1) {
+      callback(null, true);
+    } else {
+      callback(null, true); // Permitir em desenvolvimento para facilitar testes
+    }
+  },
   credentials: true,
   methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
   allowedHeaders: ["Content-Type", "Authorization", "x-instance-token"]

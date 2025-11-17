@@ -343,15 +343,26 @@ class EvolutionApiService {
         ...(participant && { participant: participant })
       };
 
+      console.log('📤 Enviando requisição para Evolution API:', {
+        url: `${this.apiUrl}/chat/deleteMessageForEveryone/${instanceName}`,
+        payload
+      });
+
       const response = await axios.delete(`${this.apiUrl}/chat/deleteMessageForEveryone/${instanceName}`, {
         headers: this.getHeaders(),
         data: payload
       });
 
+      console.log('✅ Resposta da Evolution API:', response.data);
       return response.data;
     } catch (error) {
-      console.error('Erro ao deletar mensagem:', error.response?.data || error.message);
-      throw new Error(error.response?.data?.message || 'Erro ao deletar mensagem');
+      console.error('❌ Erro ao deletar mensagem na Evolution API:', {
+        message: error.message,
+        response: error.response?.data,
+        status: error.response?.status,
+        statusText: error.response?.statusText
+      });
+      throw new Error(error.response?.data?.message || error.response?.data?.error || error.message || 'Erro ao deletar mensagem');
     }
   }
 }

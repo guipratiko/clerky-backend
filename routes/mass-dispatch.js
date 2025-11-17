@@ -541,12 +541,14 @@ router.delete('/:id', authenticateToken, blockTrialUsers, async (req, res) => {
       });
     }
 
-    // Não permitir deletar disparo em execução
+    // Se estiver em execução, cancelar primeiro
     if (dispatch.status === 'running') {
-      return res.status(400).json({
-        success: false,
-        error: 'Não é possível deletar um disparo em execução. Pause-o primeiro.'
-      });
+      try {
+        await massDispatchService.cancelDispatch(id);
+      } catch (cancelError) {
+        console.error('Erro ao cancelar disparo antes de deletar:', cancelError);
+        // Continuar com a exclusão mesmo se o cancelamento falhar
+      }
     }
 
     await MassDispatch.findByIdAndDelete(id);

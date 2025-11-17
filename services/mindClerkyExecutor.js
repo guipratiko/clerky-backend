@@ -290,9 +290,9 @@ const handleDelayNode = async (node, execution, flow) => {
     delayMs = Math.max(0, targetDate.getTime() - now.getTime());
   } else {
     // Delay baseado em duração (comportamento original)
-    const duration = Number(data.duration || 0);
-    const unit = (data.unit || 'seconds').toLowerCase();
-    const multiplier = unitToMs[unit] || unitToMs.seconds;
+  const duration = Number(data.duration || 0);
+  const unit = (data.unit || 'seconds').toLowerCase();
+  const multiplier = unitToMs[unit] || unitToMs.seconds;
     delayMs = duration * multiplier;
     resumeAt = new Date(Date.now() + delayMs);
   }
