@@ -516,27 +516,70 @@ router.post('/:instanceName/audio-recorded', async (req, res) => {
       messageId: response?.key?.id
     });
 
-    // Salvar no banco de dados
-    const message = new Message({
-      instanceName,
-      messageId: response.key?.id || uuidv4(),
-      chatId: number,
-      from: response.key?.remoteJid || number,
-      to: number,
-      fromMe: true,
-      messageType: 'ptt',
-      content: {
+    const messageId = response.key?.id || uuidv4();
+    
+    // Verificar se a mensagem já existe (pode ter sido salva pelo webhook)
+    let message = await Message.findOne({ instanceName, messageId });
+    
+    if (message) {
+      // Atualizar mensagem existente com informações adicionais
+      console.log('ℹ️ Mensagem já existe no banco, atualizando...');
+      message.content = {
+        ...message.content,
         fileName: filename,
         mimeType: mimeType,
         audioUrl: fileUrl,
         localPath: filePath
-      },
-      status: 'sent',
-      timestamp: new Date()
-    });
+      };
+      await message.save();
+      console.log('✅ Mensagem atualizada no banco');
+    } else {
+      // Criar nova mensagem
+      message = new Message({
+        instanceName,
+        messageId: messageId,
+        chatId: number,
+        from: response.key?.remoteJid || number,
+        to: number,
+        fromMe: true,
+        messageType: 'ptt',
+        content: {
+          fileName: filename,
+          mimeType: mimeType,
+          audioUrl: fileUrl,
+          localPath: filePath
+        },
+        status: 'sent',
+        timestamp: new Date()
+      });
 
-    await message.save();
-    console.log('✅ Mensagem salva no banco');
+      try {
+        await message.save();
+        console.log('✅ Mensagem salva no banco');
+      } catch (saveError) {
+        // Se ainda assim der erro de duplicata (race condition), buscar a mensagem existente
+        if (saveError.code === 11000) {
+          console.log('ℹ️ Erro de duplicata detectado, buscando mensagem existente...');
+          message = await Message.findOne({ instanceName, messageId });
+          if (message) {
+            // Atualizar com informações adicionais
+            message.content = {
+              ...message.content,
+              fileName: filename,
+              mimeType: mimeType,
+              audioUrl: fileUrl,
+              localPath: filePath
+            };
+            await message.save();
+            console.log('✅ Mensagem existente atualizada');
+          } else {
+            throw saveError; // Se não encontrou, relançar o erro original
+          }
+        } else {
+          throw saveError; // Se for outro erro, relançar
+        }
+      }
+    }
 
     // Atualizar última mensagem no chat
     try {
