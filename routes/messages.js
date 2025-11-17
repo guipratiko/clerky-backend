@@ -456,19 +456,65 @@ router.post('/:instanceName/audio-url', async (req, res) => {
 
 // Enviar áudio gravado (base64)
 router.post('/:instanceName/audio-recorded', async (req, res) => {
+  console.log('🎵 ROTA ENVIAR ÁUDIO GRAVADO CHAMADA:', {
+    instanceName: req.params.instanceName,
+    body: {
+      number: req.body.number,
+      hasAudio: !!req.body.audio,
+      filename: req.body.filename,
+      mimeType: req.body.mimeType
+    }
+  });
+
   try {
     const { instanceName } = req.params;
-    const { number, audio, filename = 'recording.mp3', mimeType = 'audio/mpeg' } = req.body;
+    const { number, audio, filename = 'recording.m4a', mimeType = 'audio/m4a' } = req.body;
 
     if (!number || !audio) {
+      console.error('❌ Parâmetros faltando:', { number: !!number, audio: !!audio });
       return res.status(400).json({
         success: false,
         error: 'number e audio são obrigatórios'
       });
     }
+
+    // Criar diretório de uploads de áudio se não existir
+    const uploadsDir = path.join(__dirname, '../uploads/audio');
+    if (!fs.existsSync(uploadsDir)) {
+      fs.mkdirSync(uploadsDir, { recursive: true });
+    }
+
+    // Converter base64 para buffer e salvar em disco
+    const audioBuffer = Buffer.from(audio, 'base64');
+    const fileName = `${uuidv4()}_${filename}`;
+    const filePath = path.join(uploadsDir, fileName);
     
-    // Enviar via Evolution API usando base64
-    const response = await evolutionApi.sendAudio(instanceName, number, audio);
+    fs.writeFileSync(filePath, audioBuffer);
+    console.log('✅ Áudio salvo em disco:', filePath);
+
+    // Gerar URL para o arquivo (usar BASE_URL ou inferir de WEBHOOK_URL)
+    let baseUrl = process.env.BASE_URL;
+    if (!baseUrl && process.env.WEBHOOK_URL) {
+      baseUrl = process.env.WEBHOOK_URL.replace('/webhook', '');
+    }
+    // Se estiver em produção, usar URL de produção
+    if (process.env.NODE_ENV === 'production' && !baseUrl?.includes('clerky.com.br')) {
+      baseUrl = 'https://back.clerky.com.br';
+    }
+    if (!baseUrl) {
+      baseUrl = 'http://localhost:4331';
+    }
+    const fileUrl = `${baseUrl}/uploads/audio/${fileName}`;
+    console.log('📤 URL do áudio:', fileUrl);
+    
+    // Enviar via Evolution API usando URL
+    console.log('📤 Enviando para Evolution API...');
+    const response = await evolutionApi.sendAudioUrl(instanceName, number, fileUrl);
+    console.log('✅ Resposta da Evolution API:', {
+      success: !!response,
+      hasKey: !!response?.key,
+      messageId: response?.key?.id
+    });
 
     // Salvar no banco de dados
     const message = new Message({
@@ -481,33 +527,59 @@ router.post('/:instanceName/audio-recorded', async (req, res) => {
       messageType: 'ptt',
       content: {
         fileName: filename,
-        mimeType: mimeType
+        mimeType: mimeType,
+        audioUrl: fileUrl,
+        localPath: filePath
       },
       status: 'sent',
       timestamp: new Date()
     });
 
     await message.save();
+    console.log('✅ Mensagem salva no banco');
 
     // Atualizar última mensagem no chat
-    await updateLastMessage(instanceName, number, {
-      content: '🎵 Mensagem de áudio',
-      timestamp: message.timestamp,
-      from: message.from,
-      fromMe: true,
-      messageType: 'ptt'
-    });
+    try {
+      await updateLastMessage(instanceName, number, {
+        content: '🎵 Mensagem de áudio',
+        timestamp: message.timestamp,
+        from: message.from,
+        fromMe: true,
+        messageType: 'ptt'
+      });
+      console.log('✅ Última mensagem do chat atualizada');
+    } catch (error) {
+      console.error('⚠️ Erro ao atualizar última mensagem do chat:', error);
+    }
 
     // Notificar via WebSocket
-    socketManager.notifyNewMessage(instanceName, message);
+    try {
+      socketManager.notifyNewMessage(instanceName, message);
+      console.log('✅ Notificação WebSocket enviada');
+    } catch (error) {
+      console.error('⚠️ Erro ao notificar via WebSocket:', error);
+    }
 
     // Enviar webhook para N8N/AI Workflows
     try {
       await sendSentMessageToN8n(instanceName, message);
+      console.log('✅ Webhook N8N enviado');
     } catch (error) {
-      console.error('❌ Erro ao enviar webhook para N8N:', error);
+      console.error('⚠️ Erro ao enviar webhook para N8N:', error);
       // Não falhar se N8N falhar
     }
+
+    // Programar limpeza do arquivo após 1 hora
+    setTimeout(() => {
+      try {
+        if (fs.existsSync(filePath)) {
+          fs.unlinkSync(filePath);
+          console.log(`🗑️ Arquivo de áudio temporário removido: ${fileName}`);
+        }
+      } catch (cleanupError) {
+        console.warn('⚠️ Erro ao remover arquivo temporário:', cleanupError);
+      }
+    }, 60 * 60 * 1000); // 1 hora
 
     res.json({
       success: true,
@@ -515,10 +587,17 @@ router.post('/:instanceName/audio-recorded', async (req, res) => {
       evolutionResponse: response
     });
   } catch (error) {
-    console.error('Erro ao enviar áudio gravado:', error);
+    console.error('❌ Erro ao enviar áudio gravado:', error);
+    console.error('Detalhes do erro:', {
+      message: error.message,
+      stack: error.stack,
+      response: error.response?.data,
+      status: error.response?.status
+    });
     res.status(500).json({
       success: false,
-      error: error.message || 'Erro interno do servidor'
+      error: error.message || 'Erro interno do servidor',
+      details: process.env.NODE_ENV === 'development' ? error.stack : undefined
     });
   }
 });
