@@ -478,21 +478,23 @@ router.post('/:instanceName/audio-recorded', async (req, res) => {
       });
     }
 
-    // Criar diretório de uploads de áudio se não existir
-    const uploadsDir = path.join(__dirname, '../uploads/audio');
-    if (!fs.existsSync(uploadsDir)) {
-      fs.mkdirSync(uploadsDir, { recursive: true });
+    // Converter base64 para buffer
+    const audioBuffer = Buffer.from(audio, 'base64');
+    
+    // Criar diretório temporário se não existir
+    const tempDir = path.join(__dirname, '../uploads/temp');
+    if (!fs.existsSync(tempDir)) {
+      fs.mkdirSync(tempDir, { recursive: true });
     }
 
-    // Converter base64 para buffer e salvar em disco
-    const audioBuffer = Buffer.from(audio, 'base64');
-    const fileName = `${uuidv4()}_${filename}`;
-    const filePath = path.join(uploadsDir, fileName);
+    // Salvar temporariamente apenas para enviar
+    const tempFileName = `${uuidv4()}_${filename}`;
+    const tempFilePath = path.join(tempDir, tempFileName);
     
-    fs.writeFileSync(filePath, audioBuffer);
-    console.log('✅ Áudio salvo em disco:', filePath);
+    fs.writeFileSync(tempFilePath, audioBuffer);
+    console.log('✅ Áudio salvo temporariamente:', tempFilePath);
 
-    // Gerar URL para o arquivo (usar BASE_URL ou inferir de WEBHOOK_URL)
+    // Gerar URL temporária para o arquivo
     let baseUrl = process.env.BASE_URL;
     if (!baseUrl && process.env.WEBHOOK_URL) {
       baseUrl = process.env.WEBHOOK_URL.replace('/webhook', '');
@@ -504,12 +506,27 @@ router.post('/:instanceName/audio-recorded', async (req, res) => {
     if (!baseUrl) {
       baseUrl = 'http://localhost:4331';
     }
-    const fileUrl = `${baseUrl}/uploads/audio/${fileName}`;
-    console.log('📤 URL do áudio:', fileUrl);
+    const tempFileUrl = `${baseUrl}/uploads/temp/${tempFileName}`;
+    console.log('📤 URL temporária do áudio:', tempFileUrl);
     
-    // Enviar via Evolution API usando URL
+    // Enviar via Evolution API usando URL temporária
     console.log('📤 Enviando para Evolution API...');
-    const response = await evolutionApi.sendAudioUrl(instanceName, number, fileUrl);
+    let response;
+    try {
+      response = await evolutionApi.sendAudioUrl(instanceName, number, tempFileUrl);
+    } finally {
+      // Deletar arquivo temporário após enviar (ou após 5 minutos se falhar)
+      setTimeout(() => {
+        try {
+          if (fs.existsSync(tempFilePath)) {
+            fs.unlinkSync(tempFilePath);
+            console.log(`🗑️ Arquivo temporário removido: ${tempFileName}`);
+          }
+        } catch (cleanupError) {
+          console.warn('⚠️ Erro ao remover arquivo temporário:', cleanupError);
+        }
+      }, 5 * 60 * 1000); // 5 minutos
+    }
     console.log('✅ Resposta da Evolution API:', {
       success: !!response,
       hasKey: !!response?.key,
@@ -527,9 +544,8 @@ router.post('/:instanceName/audio-recorded', async (req, res) => {
       message.content = {
         ...message.content,
         fileName: filename,
-        mimeType: mimeType,
-        audioUrl: fileUrl,
-        localPath: filePath
+        mimeType: mimeType
+        // Não salvar audioUrl nem localPath - áudios são armazenados no app
       };
       await message.save();
       console.log('✅ Mensagem atualizada no banco');
@@ -545,9 +561,8 @@ router.post('/:instanceName/audio-recorded', async (req, res) => {
         messageType: 'ptt',
         content: {
           fileName: filename,
-          mimeType: mimeType,
-          audioUrl: fileUrl,
-          localPath: filePath
+          mimeType: mimeType
+          // Não salvar audioUrl nem localPath - áudios são armazenados no app
         },
         status: 'sent',
         timestamp: new Date()
@@ -566,9 +581,8 @@ router.post('/:instanceName/audio-recorded', async (req, res) => {
             message.content = {
               ...message.content,
               fileName: filename,
-              mimeType: mimeType,
-              audioUrl: fileUrl,
-              localPath: filePath
+              mimeType: mimeType
+              // Não salvar audioUrl nem localPath - áudios são armazenados no app
             };
             await message.save();
             console.log('✅ Mensagem existente atualizada');

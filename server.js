@@ -100,7 +100,7 @@ app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 const createUploadDirectories = () => {
   const uploadDirs = [
     'uploads',
-    'uploads/audio',
+    'uploads/temp', // Diretório temporário para áudios (serão deletados após envio)
     'uploads/mass-dispatch'
   ];
   
@@ -114,7 +114,7 @@ const createUploadDirectories = () => {
 // Criar diretórios na inicialização
 createUploadDirectories();
 
-// Servir arquivos estáticos da pasta uploads
+// Servir arquivos estáticos da pasta uploads (incluindo temp para áudios temporários)
 app.use('/uploads', express.static('uploads'));
 
 // Função de inicialização do sistema

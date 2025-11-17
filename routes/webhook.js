@@ -560,8 +560,8 @@ async function processMessage(instanceName, msg, isSent = false) {
               base64: msg.message.base64
             }, instanceName);
             content.fileName = audioData.fileName;
-            content.audioUrl = audioData.audioUrl;
-            content.localPath = audioData.localPath;
+            content.audioUrl = audioData.audioUrl; // URL temporária para o app baixar
+            content.media = audioData.audioUrl; // Também salvar em media para compatibilidade
             console.log('✅ Áudio convertido com sucesso:', audioData.fileName);
           } catch (error) {
             console.error('❌ Erro ao processar áudio base64:', error);
@@ -578,8 +578,8 @@ async function processMessage(instanceName, msg, isSent = false) {
               base64: msg.message.base64
             }, instanceName);
             content.fileName = audioData.fileName;
-            content.audioUrl = audioData.audioUrl;
-            content.localPath = audioData.localPath;
+            content.audioUrl = audioData.audioUrl; // URL temporária para o app baixar
+            content.media = audioData.audioUrl; // Também salvar em media para compatibilidade
             console.log('✅ Áudio convertido com sucesso:', audioData.fileName);
           } catch (error) {
             console.error('❌ Erro ao processar áudio base64:', error);
@@ -807,18 +807,18 @@ async function processReceivedAudio(audioMessage, instanceName) {
 
     // Gerar nome único para o arquivo
     const fileName = `${uuidv4()}.mp3`;
-    const uploadsDir = path.join(__dirname, '..', 'uploads', 'audio');
-    const filePath = path.join(uploadsDir, fileName);
+    const tempDir = path.join(__dirname, '..', 'uploads', 'temp');
+    const filePath = path.join(tempDir, fileName);
 
     // Garantir que o diretório existe
-    if (!fs.existsSync(uploadsDir)) {
-      fs.mkdirSync(uploadsDir, { recursive: true });
+    if (!fs.existsSync(tempDir)) {
+      fs.mkdirSync(tempDir, { recursive: true });
     }
 
-    // Salvar diretamente como MP3 (o base64 já é OPUS, mas funciona como MP3)
+    // Salvar temporariamente (será deletado após o app baixar)
     fs.writeFileSync(filePath, audioBuffer);
 
-    // Construir URL de acesso
+    // Construir URL temporária de acesso
     let baseUrl = process.env.BASE_URL;
     if (!baseUrl && process.env.WEBHOOK_URL) {
       baseUrl = process.env.WEBHOOK_URL.replace('/webhook', '');
@@ -830,9 +830,21 @@ async function processReceivedAudio(audioMessage, instanceName) {
     if (!baseUrl) {
       baseUrl = 'http://localhost:4331';
     }
-    const audioUrl = `${baseUrl}/uploads/audio/${fileName}`;
+    const audioUrl = `${baseUrl}/uploads/temp/${fileName}`;
 
-    console.log(`✅ Áudio recebido processado: ${fileName} (${audioBuffer.length} bytes)`);
+    console.log(`✅ Áudio recebido processado temporariamente: ${fileName} (${audioBuffer.length} bytes)`);
+
+    // Deletar arquivo temporário após 1 hora (tempo suficiente para o app baixar)
+    setTimeout(() => {
+      try {
+        if (fs.existsSync(filePath)) {
+          fs.unlinkSync(filePath);
+          console.log(`🗑️ Arquivo temporário removido: ${fileName}`);
+        }
+      } catch (cleanupError) {
+        console.warn('⚠️ Erro ao remover arquivo temporário:', cleanupError);
+      }
+    }, 60 * 60 * 1000); // 1 hora
 
     return {
       fileName,
