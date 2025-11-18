@@ -86,10 +86,11 @@ router.post('/:instanceName/text', async (req, res) => {
     // Enviar via Evolution API
     const response = await evolutionApi.sendTextMessage(instanceName, number, text, options);
 
-    // Salvar no banco de dados
-    const message = new Message({
+    // Salvar no banco de dados (evitar duplicatas)
+    const messageId = response.key?.id || uuidv4();
+    const messageData = {
       instanceName,
-      messageId: response.key?.id || uuidv4(),
+      messageId,
       chatId: number,
       from: response.key?.remoteJid || number,
       to: number,
@@ -102,9 +103,14 @@ router.post('/:instanceName/text', async (req, res) => {
       timestamp: new Date(),
       quotedMessage,
       mentions: mentions?.mentioned || []
-    });
+    };
 
-    await message.save();
+    // Usar findOneAndUpdate com upsert para evitar duplicatas
+    const message = await Message.findOneAndUpdate(
+      { instanceName, messageId },
+      messageData,
+      { upsert: true, new: true, setDefaultsOnInsert: true }
+    );
 
     // Atualizar última mensagem no chat
     await updateLastMessage(instanceName, number, {
@@ -195,10 +201,11 @@ router.post('/:instanceName/media', upload.single('file'), async (req, res) => {
       messageId: response?.key?.id
     });
 
-    // Salvar no banco de dados
-    const message = new Message({
+    // Salvar no banco de dados (evitar duplicatas)
+    const messageId = response.key?.id || uuidv4();
+    const messageData = {
       instanceName,
-      messageId: response.key?.id || uuidv4(),
+      messageId,
       chatId: number,
       from: response.key?.remoteJid || number,
       to: number,
@@ -213,9 +220,14 @@ router.post('/:instanceName/media', upload.single('file'), async (req, res) => {
       },
       status: 'sent',
       timestamp: new Date()
-    });
+    };
 
-    await message.save();
+    // Usar findOneAndUpdate com upsert para evitar duplicatas
+    const message = await Message.findOneAndUpdate(
+      { instanceName, messageId },
+      messageData,
+      { upsert: true, new: true, setDefaultsOnInsert: true }
+    );
     console.log('✅ Mensagem salva no banco com sucesso');
 
     // Atualizar última mensagem no chat
@@ -306,10 +318,11 @@ router.post('/:instanceName/audio', upload.single('audio'), async (req, res) => 
     // Enviar via Evolution API usando URL
     const response = await evolutionApi.sendAudioUrl(instanceName, number, fileUrl);
 
-    // Salvar no banco de dados
-    const message = new Message({
+    // Salvar no banco de dados (evitar duplicatas)
+    const messageId = response.key?.id || uuidv4();
+    const messageData = {
       instanceName,
-      messageId: response.key?.id || uuidv4(),
+      messageId,
       chatId: number,
       from: response.key?.remoteJid || number,
       to: number,
@@ -325,9 +338,14 @@ router.post('/:instanceName/audio', upload.single('audio'), async (req, res) => 
       },
       status: 'sent',
       timestamp: new Date()
-    });
+    };
 
-    await message.save();
+    // Usar findOneAndUpdate com upsert para evitar duplicatas
+    const message = await Message.findOneAndUpdate(
+      { instanceName, messageId },
+      messageData,
+      { upsert: true, new: true, setDefaultsOnInsert: true }
+    );
 
     // Atualizar última mensagem no chat
     await updateLastMessage(instanceName, number, {
@@ -402,9 +420,11 @@ router.post('/:instanceName/audio-url', async (req, res) => {
     const response = await evolutionApi.sendAudioUrl(instanceName, number, audioUrl);
 
     // Salvar no banco de dados
-    const message = new Message({
+    // Salvar no banco de dados (evitar duplicatas)
+    const messageId = response.key?.id || uuidv4();
+    const messageData = {
       instanceName,
-      messageId: response.key?.id || uuidv4(),
+      messageId,
       chatId: number,
       from: response.key?.remoteJid || number,
       to: number,
@@ -416,9 +436,14 @@ router.post('/:instanceName/audio-url', async (req, res) => {
       },
       status: 'sent',
       timestamp: new Date()
-    });
+    };
 
-    await message.save();
+    // Usar findOneAndUpdate com upsert para evitar duplicatas
+    const message = await Message.findOneAndUpdate(
+      { instanceName, messageId },
+      messageData,
+      { upsert: true, new: true, setDefaultsOnInsert: true }
+    );
 
     // Atualizar última mensagem no chat
     await updateLastMessage(instanceName, number, {
@@ -536,64 +561,42 @@ router.post('/:instanceName/audio-recorded', async (req, res) => {
     const messageId = response.key?.id || uuidv4();
     
     // Verificar se a mensagem já existe (pode ter sido salva pelo webhook)
-    let message = await Message.findOne({ instanceName, messageId });
-    
-    if (message) {
-      // Atualizar mensagem existente com informações adicionais
-      console.log('ℹ️ Mensagem já existe no banco, atualizando...');
-      message.content = {
-        ...message.content,
+    // Usar findOneAndUpdate com upsert para evitar duplicatas
+    const messageData = {
+      instanceName,
+      messageId,
+      chatId: number,
+      from: response.key?.remoteJid || number,
+      to: number,
+      fromMe: true,
+      messageType: 'ptt',
+      content: {
         fileName: filename,
         mimeType: mimeType
         // Não salvar audioUrl nem localPath - áudios são armazenados no app
-      };
-      await message.save();
-      console.log('✅ Mensagem atualizada no banco');
-    } else {
-      // Criar nova mensagem
-      message = new Message({
-        instanceName,
-        messageId: messageId,
-        chatId: number,
-        from: response.key?.remoteJid || number,
-        to: number,
-        fromMe: true,
-        messageType: 'ptt',
-        content: {
-          fileName: filename,
-          mimeType: mimeType
-          // Não salvar audioUrl nem localPath - áudios são armazenados no app
-        },
-        status: 'sent',
-        timestamp: new Date()
-      });
+      },
+      status: 'sent',
+      timestamp: new Date()
+    };
 
-      try {
-        await message.save();
-        console.log('✅ Mensagem salva no banco');
-      } catch (saveError) {
-        // Se ainda assim der erro de duplicata (race condition), buscar a mensagem existente
-        if (saveError.code === 11000) {
-          console.log('ℹ️ Erro de duplicata detectado, buscando mensagem existente...');
-          message = await Message.findOne({ instanceName, messageId });
-          if (message) {
-            // Atualizar com informações adicionais
-            message.content = {
-              ...message.content,
-              fileName: filename,
-              mimeType: mimeType
-              // Não salvar audioUrl nem localPath - áudios são armazenados no app
-            };
-            await message.save();
-            console.log('✅ Mensagem existente atualizada');
-          } else {
-            throw saveError; // Se não encontrou, relançar o erro original
-          }
-        } else {
-          throw saveError; // Se for outro erro, relançar
-        }
-      }
+    // Atualizar conteúdo se mensagem já existir
+    const existingMessage = await Message.findOne({ instanceName, messageId });
+    if (existingMessage) {
+      // Se já existe, atualizar apenas o conteúdo
+      messageData.content = {
+        ...existingMessage.content,
+        fileName: filename,
+        mimeType: mimeType
+      };
+      console.log('ℹ️ Mensagem já existe no banco, atualizando...');
     }
+
+    const message = await Message.findOneAndUpdate(
+      { instanceName, messageId },
+      messageData,
+      { upsert: true, new: true, setDefaultsOnInsert: true }
+    );
+    console.log('✅ Mensagem salva/atualizada no banco');
 
     // Atualizar última mensagem no chat
     try {

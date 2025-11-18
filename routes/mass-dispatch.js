@@ -724,15 +724,23 @@ router.post('/templates', authenticateToken, blockTrialUsers, upload.single('med
         break;
 
       case 'audio':
-        if (!req.file) {
+        // Aceitar arquivo ou URL
+        if (req.body.audioUrl) {
+          // Se for URL, usar diretamente
+          templateData.content.media = req.body.audioUrl;
+          templateData.content.mediaType = 'audio';
+          templateData.content.fileName = req.body.audioUrl.split('/').pop() || 'audio.mp3';
+        } else if (req.file) {
+          // Se for arquivo, salvar e usar URL
+          templateData.content.media = `${process.env.BASE_URL}/uploads/mass-dispatch/${req.file.filename}`;
+          templateData.content.mediaType = 'audio';
+          templateData.content.fileName = fileName || req.file.originalname;
+        } else {
           return res.status(400).json({
             success: false,
-            error: 'Arquivo de áudio é obrigatório'
+            error: 'Arquivo de áudio ou URL é obrigatório'
           });
         }
-        templateData.content.media = `${process.env.BASE_URL}/uploads/mass-dispatch/${req.file.filename}`;
-        templateData.content.mediaType = 'audio';
-        templateData.content.fileName = fileName || req.file.originalname;
         break;
 
       case 'file':

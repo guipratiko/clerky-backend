@@ -603,8 +603,8 @@ async function processMessage(instanceName, msg, isSent = false) {
       }
     }
 
-    // Criar mensagem
-    const message = new Message({
+    // Criar ou atualizar mensagem (evitar duplicatas)
+    const messageData = {
       instanceName,
       messageId,
       chatId,
@@ -616,9 +616,14 @@ async function processMessage(instanceName, msg, isSent = false) {
       status: fromMe ? 'sent' : 'received',
       timestamp: new Date((msg.messageTimestamp || msg.timestamp || Date.now()) * 1000),
       pushName: msg.pushName // Capturar pushName do payload original
-    });
+    };
 
-    await message.save();
+    // Usar findOneAndUpdate com upsert para evitar duplicatas
+    const message = await Message.findOneAndUpdate(
+      { instanceName, messageId },
+      messageData,
+      { upsert: true, new: true, setDefaultsOnInsert: true }
+    );
 
     // Atualizar conversa
     await updateChatWithNewMessage(instanceName, chatId, message);
@@ -1177,20 +1182,23 @@ router.post('/debug/save-message/:instanceName', async (req, res) => {
   try {
     const { instanceName } = req.params;
     
-    const testMessage = new Message({
-      instanceName,
-      messageId: 'TEST_DIRECT_SAVE',
-      chatId: '556298448536@s.whatsapp.net',
-      from: '556298448536@s.whatsapp.net',
-      to: '556298448536@s.whatsapp.net',
-      fromMe: false,
-      messageType: 'text',
-      content: { text: 'Teste direto MongoDB' },
-      status: 'received',
-      timestamp: new Date()
-    });
-    
-    await testMessage.save();
+    // Usar findOneAndUpdate com upsert para evitar duplicatas
+    const testMessage = await Message.findOneAndUpdate(
+      { instanceName, messageId: 'TEST_DIRECT_SAVE' },
+      {
+        instanceName,
+        messageId: 'TEST_DIRECT_SAVE',
+        chatId: '556298448536@s.whatsapp.net',
+        from: '556298448536@s.whatsapp.net',
+        to: '556298448536@s.whatsapp.net',
+        fromMe: false,
+        messageType: 'text',
+        content: { text: 'Teste direto MongoDB' },
+        status: 'received',
+        timestamp: new Date()
+      },
+      { upsert: true, new: true, setDefaultsOnInsert: true }
+    );
     
     res.json({
       success: true,
