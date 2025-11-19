@@ -88,23 +88,17 @@ const massDispatchSchema = new mongoose.Schema({
     customDelay: Number, // delay customizado em segundos
     schedule: {
       enabled: Boolean,
-      startTime: String, // HH:mm
-      endTime: String, // HH:mm
+      startTime: String, // HH:mm - Horário de início diário
+      pauseTime: String, // HH:mm - Horário de pausa diário
       timezone: {
         type: String,
         default: 'America/Sao_Paulo'
       },
-      daysOfWeek: [{
-        type: Number, // 0=domingo, 1=segunda, etc
+      excludedDays: [{
+        type: Number, // 0=domingo, 1=segunda, 2=terça, 3=quarta, 4=quinta, 5=sexta, 6=sábado
         min: 0,
         max: 6
-      }],
-      startDate: Date,
-      endDate: Date,
-      // Novos campos para agendamento específico
-      startDateTime: Date,
-      pauseDateTime: Date,
-      resumeDateTime: Date
+      }] // Dias da semana em que o disparo NÃO deve executar
     },
     validateNumbers: {
       type: Boolean,
@@ -193,22 +187,30 @@ massDispatchSchema.methods.isWithinSchedule = function() {
   const currentMinute = now.getMinutes();
   const currentDay = now.getDay();
   
-  // Verificar dias da semana
-  if (this.settings.schedule.daysOfWeek.length > 0 && 
-      !this.settings.schedule.daysOfWeek.includes(currentDay)) {
+  // Verificar dias excluídos (se o dia atual está na lista de exclusão, retorna false)
+  if (this.settings.schedule.excludedDays && 
+      this.settings.schedule.excludedDays.length > 0 && 
+      this.settings.schedule.excludedDays.includes(currentDay)) {
     return false;
   }
   
-  // Verificar horário
-  if (this.settings.schedule.startTime && this.settings.schedule.endTime) {
+  // Verificar horário (entre startTime e pauseTime)
+  if (this.settings.schedule.startTime && this.settings.schedule.pauseTime) {
     const [startHour, startMinute] = this.settings.schedule.startTime.split(':').map(Number);
-    const [endHour, endMinute] = this.settings.schedule.endTime.split(':').map(Number);
+    const [pauseHour, pauseMinute] = this.settings.schedule.pauseTime.split(':').map(Number);
     
     const currentTimeMinutes = currentHour * 60 + currentMinute;
     const startTimeMinutes = startHour * 60 + startMinute;
-    const endTimeMinutes = endHour * 60 + endMinute;
+    const pauseTimeMinutes = pauseHour * 60 + pauseMinute;
     
-    return currentTimeMinutes >= startTimeMinutes && currentTimeMinutes <= endTimeMinutes;
+    // Se startTime > pauseTime, significa que o horário passa da meia-noite
+    if (startTimeMinutes > pauseTimeMinutes) {
+      // Horário válido se: >= startTime OU <= pauseTime
+      return currentTimeMinutes >= startTimeMinutes || currentTimeMinutes <= pauseTimeMinutes;
+    } else {
+      // Horário válido se: >= startTime E <= pauseTime
+      return currentTimeMinutes >= startTimeMinutes && currentTimeMinutes <= pauseTimeMinutes;
+    }
   }
   
   return true;

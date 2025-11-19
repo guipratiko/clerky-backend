@@ -101,15 +101,20 @@ router.get('/scheduled', authenticateToken, blockTrialUsers, async (req, res) =>
     const dispatches = await MassDispatch.find({
       userId: req.user._id,
       'settings.schedule.enabled': true
-    }).sort({ 'settings.schedule.startDateTime': 1 });
+    }).sort({ createdAt: -1 });
 
     // Formatar dados para o frontend
     const formattedDispatches = dispatches.map(dispatch => ({
       id: dispatch._id,
+      _id: dispatch._id,
       name: dispatch.name,
       instanceName: dispatch.instanceName,
       status: dispatch.status,
       schedule: dispatch.settings?.schedule,
+      statistics: dispatch.statistics,
+      template: dispatch.template,
+      nextScheduledRun: dispatch.nextScheduledRun,
+      numbers: dispatch.numbers,
       createdAt: dispatch.createdAt,
       updatedAt: dispatch.updatedAt
     }));
@@ -176,15 +181,26 @@ router.post('/', authenticateToken, blockTrialUsers, async (req, res) => {
     // Preparar dados de agendamento
     // schedule pode vir diretamente ou dentro de settings.schedule
     let scheduleData = { enabled: false };
+    let nextScheduledRun = null;
     const scheduleToUse = schedule || settings?.schedule;
     if (scheduleToUse && scheduleToUse.enabled) {
       scheduleData = {
         enabled: true,
-        startDateTime: scheduleToUse.startDateTime ? new Date(scheduleToUse.startDateTime) : null,
-        pauseDateTime: scheduleToUse.pauseDateTime ? new Date(scheduleToUse.pauseDateTime) : null,
-        resumeDateTime: scheduleToUse.resumeDateTime ? new Date(scheduleToUse.resumeDateTime) : null,
+        startTime: scheduleToUse.startTime || '08:00', // HH:mm
+        pauseTime: scheduleToUse.pauseTime || '18:00', // HH:mm
+        excludedDays: scheduleToUse.excludedDays || [], // Array de dias excluídos (0=domingo, 6=sábado)
         timezone: scheduleToUse.timezone || 'America/Sao_Paulo'
       };
+      
+      // Calcular próximo horário de execução se agendamento estiver habilitado
+      if (scheduleData.startTime) {
+        const tempDispatch = {
+          settings: {
+            schedule: scheduleData
+          }
+        };
+        nextScheduledRun = massDispatchService.calculateNextRun(tempDispatch);
+      }
     }
 
       // Processar template baseado no tipo
@@ -228,7 +244,8 @@ router.post('/', authenticateToken, blockTrialUsers, async (req, res) => {
         }
       },
       numbers: [],
-      status: 'draft'
+      status: 'draft',
+      nextScheduledRun: nextScheduledRun
     };
 
     const dispatch = await massDispatchService.createDispatch(dispatchData);
@@ -361,24 +378,19 @@ router.post('/:id/start', authenticateToken, blockTrialUsers, async (req, res) =
     }
 
     // Validar agendamento se configurado
-    if (dispatch.settings?.schedule?.enabled && dispatch.settings.schedule.startDateTime) {
-      const startTime = new Date(dispatch.settings.schedule.startDateTime);
-      const now = new Date();
-      
-      if (now < startTime) {
-        const timeDiff = startTime - now;
-        const hours = Math.floor(timeDiff / (1000 * 60 * 60));
-        const minutes = Math.floor((timeDiff % (1000 * 60 * 60)) / (1000 * 60));
+    if (dispatch.settings?.schedule?.enabled) {
+      // Verificar se está no horário permitido
+      if (!dispatch.isWithinSchedule()) {
+        const nextRun = dispatch.nextScheduledRun || massDispatchService.calculateNextRun(dispatch);
+        if (nextRun) {
+          dispatch.nextScheduledRun = nextRun;
+          await dispatch.save();
+        }
         
         return res.status(400).json({
           success: false,
-          error: `Disparo agendado para ${startTime.toLocaleString('pt-BR')}. Faltam ${hours}h ${minutes}min.`,
-          scheduledTime: startTime.toISOString(),
-          timeRemaining: {
-            hours,
-            minutes,
-            totalMinutes: Math.floor(timeDiff / (1000 * 60))
-          }
+          error: 'Fora do horário permitido para iniciar o disparo. O disparo será iniciado automaticamente no próximo horário válido.',
+          nextScheduledRun: nextRun ? nextRun.toISOString() : null
         });
       }
     }

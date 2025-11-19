@@ -11,6 +11,7 @@ require('dotenv').config();
 const Instance = require('./models/Instance');
 const evolutionApi = require('./services/evolutionApi');
 const schedulerService = require('./services/schedulerService');
+const massDispatchService = require('./services/massDispatchService');
 const redisClient = require('./utils/redisClient');
 
 const app = express();
@@ -139,6 +140,9 @@ const initializeSystem = async () => {
         syncCount++;
       }
     }
+
+    // Recuperar disparos em andamento após reinicialização
+    await massDispatchService.recoverRunningDispatches();
 
     console.log('🎯 Sistema pronto para uso!');
     

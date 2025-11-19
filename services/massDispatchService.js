@@ -103,6 +103,12 @@ class MassDispatchService {
     dispatch.numbers = finalNumbers;
     dispatch.updateStatistics();
     dispatch.status = 'ready';
+    
+    // Calcular próximo horário de execução se agendamento estiver habilitado
+    if (dispatch.settings.schedule?.enabled && dispatch.settings.schedule.startTime) {
+      dispatch.nextScheduledRun = this.calculateNextRun(dispatch);
+    }
+    
     await dispatch.save();
 
     // Notificar via WebSocket
@@ -159,10 +165,26 @@ class MassDispatchService {
     dispatch.isActive = true;
     dispatch.startedAt = new Date();
     dispatch.currentIndex = 0;
+    dispatch.updateStatistics();
     await dispatch.save();
 
     // Registrar disparo ativo
     this.activeDispatches.set(dispatch.instanceName, dispatchId);
+
+    // Enviar progresso inicial
+    const totalValid = dispatch.statistics.validNumbers || dispatch.numbers.filter(n => n.valid).length;
+    const sent = dispatch.statistics.sent || 0;
+    const percentage = totalValid > 0 ? Math.round((sent / totalValid) * 100) : 0;
+
+    socketManager.emitToUser(dispatch.userId, 'mass-dispatch-progress', {
+      dispatchId: dispatch._id,
+      progress: {
+        current: sent,
+        total: totalValid,
+        percentage: percentage
+      },
+      statistics: dispatch.statistics
+    });
 
     // Iniciar processo de envio
     this.processDispatch(dispatchId);
@@ -274,13 +296,18 @@ class MassDispatchService {
       dispatch.updateStatistics();
       await dispatch.save();
 
+      // Calcular progresso baseado nas estatísticas (mais preciso)
+      const totalValid = dispatch.statistics.validNumbers || dispatch.numbers.filter(n => n.valid).length;
+      const sent = dispatch.statistics.sent || 0;
+      const percentage = totalValid > 0 ? Math.round((sent / totalValid) * 100) : 0;
+
       // Notificar progresso
       socketManager.emitToUser(dispatch.userId, 'mass-dispatch-progress', {
         dispatchId: dispatch._id,
         progress: {
-          current: dispatch.currentIndex,
-          total: validNumbers.length,
-          percentage: Math.round((dispatch.currentIndex / validNumbers.length) * 100)
+          current: sent,
+          total: totalValid,
+          percentage: percentage
         },
         statistics: dispatch.statistics
       });
@@ -640,11 +667,18 @@ class MassDispatchService {
       this.timers.delete(dispatchId);
     }
 
+    // Calcular próximo horário de retomada se agendamento estiver habilitado
+    let nextScheduledRun = null;
+    if (dispatch.settings.schedule?.enabled) {
+      nextScheduledRun = this.calculateNextRun(dispatch);
+    }
+
     // Atualizar status
     dispatch.status = 'paused';
     dispatch.isActive = false;
     dispatch.pausedAt = new Date();
     dispatch.error = reason;
+    dispatch.nextScheduledRun = nextScheduledRun;
     await dispatch.save();
 
     // Remover da lista de ativos
@@ -653,7 +687,8 @@ class MassDispatchService {
     // Notificar
     socketManager.emitToUser(dispatch.userId, 'mass-dispatch-paused', {
       dispatchId: dispatch._id,
-      reason
+      reason,
+      nextScheduledRun: nextScheduledRun ? nextScheduledRun.toISOString() : null
     });
   }
 
@@ -686,9 +721,26 @@ class MassDispatchService {
     dispatch.isActive = true;
     dispatch.pausedAt = null;
     dispatch.error = undefined;
+    dispatch.updateStatistics();
     await dispatch.save();
 
     this.activeDispatches.set(dispatch.instanceName, dispatchId);
+
+    // Enviar progresso atualizado
+    const totalValid = dispatch.statistics.validNumbers || dispatch.numbers.filter(n => n.valid).length;
+    const sent = dispatch.statistics.sent || 0;
+    const percentage = totalValid > 0 ? Math.round((sent / totalValid) * 100) : 0;
+
+    socketManager.emitToUser(dispatch.userId, 'mass-dispatch-progress', {
+      dispatchId: dispatch._id,
+      progress: {
+        current: sent,
+        total: totalValid,
+        percentage: percentage
+      },
+      statistics: dispatch.statistics
+    });
+
     this.processDispatch(dispatchId);
 
     socketManager.emitToUser(dispatch.userId, 'mass-dispatch-resumed', {
@@ -846,19 +898,55 @@ class MassDispatchService {
     const now = new Date();
     const schedule = dispatch.settings.schedule;
     
-    if (!schedule.enabled) return null;
+    if (!schedule.enabled || !schedule.startTime) return null;
 
-    // Implementar lógica de agendamento
-    // Por simplicidade, agendar para próximo horário válido
-    const nextRun = new Date(now);
-    nextRun.setDate(nextRun.getDate() + 1);
+    const [startHour, startMinute] = schedule.startTime.split(':').map(Number);
+    const excludedDays = schedule.excludedDays || [];
     
-    if (schedule.startTime) {
-      const [hour, minute] = schedule.startTime.split(':');
-      nextRun.setHours(parseInt(hour), parseInt(minute), 0, 0);
+    // Começar verificando a partir de hoje
+    let nextRun = new Date(now);
+    nextRun.setHours(startHour, startMinute, 0, 0);
+    
+    // Se o horário de hoje já passou, começar a verificar a partir de amanhã
+    if (nextRun <= now) {
+      nextRun.setDate(nextRun.getDate() + 1);
     }
-
+    
+    // Procurar o próximo dia válido (não excluído)
+    let attempts = 0;
+    const maxAttempts = 14; // Evitar loop infinito (máximo 2 semanas)
+    
+    while (excludedDays.includes(nextRun.getDay()) && attempts < maxAttempts) {
+      nextRun.setDate(nextRun.getDate() + 1);
+      attempts++;
+    }
+    
     return nextRun;
+  }
+
+  /**
+   * Calcula próximo horário de pausa baseado no agendamento
+   * @param {object} dispatch - Disparo
+   * @returns {Date} - Próximo horário de pausa
+   */
+  calculateNextPause(dispatch) {
+    const now = new Date();
+    const schedule = dispatch.settings.schedule;
+    
+    if (!schedule.enabled || !schedule.pauseTime) return null;
+
+    const [pauseHour, pauseMinute] = schedule.pauseTime.split(':').map(Number);
+    
+    // Criar data para o horário de pausa de hoje
+    let nextPause = new Date(now);
+    nextPause.setHours(pauseHour, pauseMinute, 0, 0);
+    
+    // Se o horário de pausa de hoje já passou, retornar null (será calculado no próximo dia)
+    if (nextPause <= now) {
+      return null;
+    }
+    
+    return nextPause;
   }
 
   /**
@@ -923,6 +1011,114 @@ class MassDispatchService {
     return await MassDispatch.find({ userId })
       .sort({ createdAt: -1 })
       .populate('userId', 'name email');
+  }
+
+  /**
+   * Recupera disparos em andamento após reinicialização do servidor
+   * Busca disparos com status 'running' e retoma o processamento
+   */
+  async recoverRunningDispatches() {
+    try {
+      console.log('🔄 Recuperando disparos em andamento...');
+      
+      // Buscar todos os disparos com status 'running'
+      const runningDispatches = await MassDispatch.find({
+        status: 'running',
+        isActive: true
+      });
+
+      if (runningDispatches.length === 0) {
+        console.log('✅ Nenhum disparo em andamento para recuperar');
+        return;
+      }
+
+      console.log(`📋 Encontrados ${runningDispatches.length} disparo(s) em andamento`);
+
+      for (const dispatch of runningDispatches) {
+        try {
+          // Verificar se ainda está no horário permitido (se tiver agendamento)
+          if (dispatch.settings?.schedule?.enabled) {
+            if (!dispatch.isWithinSchedule()) {
+              // Se não está no horário, pausar o disparo
+              console.log(`⏸️ Disparo ${dispatch.name} (${dispatch._id}) fora do horário. Pausando...`);
+              await this.pauseDispatch(dispatch._id, 'Fora do horário permitido após reinicialização');
+              continue;
+            }
+          }
+
+          // Verificar se já existe um disparo ativo para esta instância
+          if (this.activeDispatches.has(dispatch.instanceName)) {
+            console.log(`⚠️ Já existe um disparo ativo para a instância ${dispatch.instanceName}. Pausando ${dispatch.name}...`);
+            dispatch.status = 'paused';
+            dispatch.isActive = false;
+            dispatch.error = 'Conflito: outro disparo já está ativo para esta instância';
+            await dispatch.save();
+            continue;
+          }
+
+          // Verificar se ainda há números pendentes
+          const pendingNumbers = dispatch.numbers.filter(n => n.valid && n.status === 'pending');
+          if (pendingNumbers.length === 0) {
+            // Se não há números pendentes, marcar como concluído
+            console.log(`✅ Disparo ${dispatch.name} (${dispatch._id}) não tem números pendentes. Marcando como concluído...`);
+            await this.completeDispatch(dispatch._id);
+            continue;
+          }
+
+          // Retomar o disparo
+          console.log(`▶️ Retomando disparo ${dispatch.name} (${dispatch._id}) - ${pendingNumbers.length} números pendentes`);
+          
+          // Atualizar template se necessário
+          await this.refreshTemplateIfNeeded(dispatch);
+
+          // Registrar como ativo
+          this.activeDispatches.set(dispatch.instanceName, dispatch._id.toString());
+          
+          // Garantir que o status está correto
+          dispatch.isActive = true;
+          dispatch.updateStatistics();
+          await dispatch.save();
+
+          // Enviar progresso atualizado para o frontend
+          const totalValid = dispatch.statistics.validNumbers || dispatch.numbers.filter(n => n.valid).length;
+          const sent = dispatch.statistics.sent || 0;
+          const percentage = totalValid > 0 ? Math.round((sent / totalValid) * 100) : 0;
+
+          socketManager.emitToUser(dispatch.userId, 'mass-dispatch-progress', {
+            dispatchId: dispatch._id,
+            progress: {
+              current: sent,
+              total: totalValid,
+              percentage: percentage
+            },
+            statistics: dispatch.statistics
+          });
+
+          // Retomar processamento
+          this.processDispatch(dispatch._id.toString());
+
+          console.log(`✅ Disparo ${dispatch.name} (${dispatch._id}) recuperado com sucesso`);
+
+        } catch (error) {
+          console.error(`❌ Erro ao recuperar disparo ${dispatch.name} (${dispatch._id}):`, error);
+          
+          // Em caso de erro, pausar o disparo para evitar loop
+          try {
+            dispatch.status = 'paused';
+            dispatch.isActive = false;
+            dispatch.error = `Erro na recuperação: ${error.message}`;
+            await dispatch.save();
+          } catch (saveError) {
+            console.error(`❌ Erro ao salvar status de erro do disparo:`, saveError);
+          }
+        }
+      }
+
+      console.log(`✅ Recuperação de disparos concluída. ${this.activeDispatches.size} disparo(s) ativo(s)`);
+
+    } catch (error) {
+      console.error('❌ Erro ao recuperar disparos em andamento:', error);
+    }
   }
 
   /**
