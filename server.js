@@ -175,6 +175,8 @@ const massDispatchRoutes = require('./routes/mass-dispatch');
 const n8nIntegrationRoutes = require('./routes/n8n-integration');
 const aiWorkflowRoutes = require('./routes/ai-workflows');
 const mindClerkyRoutes = require('./routes/mind-clerky');
+const inAppPurchaseRoutes = require('./routes/in-app-purchase');
+const appStoreConnectRoutes = require('./routes/app-store-connect');
 const mindClerkyExecutor = require('./services/mindClerkyExecutor');
 
 // Usar rotas
@@ -192,6 +194,8 @@ app.use('/api/ai-workflows', aiWorkflowRoutes);
 app.use('/api/contact-crm', require('./routes/contact-crm'));
 app.use('/api/scheduler', require('./routes/scheduler'));
 app.use('/api/mind-clerky', mindClerkyRoutes);
+app.use('/api/in-app-purchase', inAppPurchaseRoutes);
+app.use('/api/app-store-connect', appStoreConnectRoutes);
 
 // Rota de teste
 app.get('/api/health', (req, res) => {
