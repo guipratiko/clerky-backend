@@ -102,9 +102,23 @@ router.post('/verify-and-update', authenticateToken, async (req, res) => {
 
     const subscription = subscriptionStatus.subscription;
     
+    // Lógica igual ao AppMax: se já tem plano válido, somar 1 mês a partir da data de vencimento
+    // Caso contrário, usar a data de expiração da assinatura
+    const now = new Date();
+    let planExpiresAt;
+    
+    if (user.planExpiresAt && new Date(user.planExpiresAt) > now) {
+      // Plano ainda válido - somar 1 mês a partir da data de vencimento
+      planExpiresAt = new Date(user.planExpiresAt);
+      planExpiresAt.setMonth(planExpiresAt.getMonth() + 1);
+    } else {
+      // Usar a data de expiração da assinatura
+      planExpiresAt = subscription.expiresDate;
+    }
+    
     // Atualizar dados do usuário
     user.plan = 'premium';
-    user.planExpiresAt = subscription.expiresDate;
+    user.planExpiresAt = planExpiresAt;
     user.iapTransactionId = subscription.transactionId;
     user.iapOriginalTransactionId = subscription.originalTransactionId;
     user.iapProductId = subscription.productId;
