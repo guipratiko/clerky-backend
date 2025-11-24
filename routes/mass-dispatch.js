@@ -689,6 +689,13 @@ router.get('/templates/list', authenticateToken, blockTrialUsers, async (req, re
     try {
       const { name, description, sequence } = req.body;
 
+      console.log('📥 Dados recebidos para criar template de sequência:');
+      console.log('   - name:', name);
+      console.log('   - description:', description);
+      console.log('   - sequence (tipo):', typeof sequence);
+      console.log('   - sequence (valor):', sequence);
+      console.log('   - files:', req.files?.length || 0);
+
     // Parse da sequência se for string
     let parsedSequence = sequence;
     if (typeof sequence === 'string') {
@@ -696,17 +703,22 @@ router.get('/templates/list', authenticateToken, blockTrialUsers, async (req, re
         parsedSequence = JSON.parse(sequence);
       } catch (error) {
         console.error('❌ Erro ao fazer parse da sequência:', error);
+        console.error('   Sequência recebida:', sequence);
         return res.status(400).json({
           success: false,
-          error: 'Formato inválido da sequência de mensagens'
+          error: 'Formato inválido da sequência de mensagens: ' + error.message
         });
       }
     }
 
       if (!name || !parsedSequence || !parsedSequence.messages) {
+        console.error('❌ Validação falhou:');
+        console.error('   - name:', name);
+        console.error('   - parsedSequence:', parsedSequence);
+        console.error('   - parsedSequence.messages:', parsedSequence?.messages);
         return res.status(400).json({
           success: false,
-          error: 'Nome e sequência de mensagens são obrigatórios'
+          error: 'Nome e sequência de mensagens são obrigatórios. Nome: ' + (name ? 'OK' : 'FALTANDO') + ', Sequência: ' + (parsedSequence ? 'OK' : 'FALTANDO') + ', Mensagens: ' + (parsedSequence?.messages ? 'OK' : 'FALTANDO')
         });
       }
 
@@ -720,14 +732,18 @@ router.get('/templates/list', authenticateToken, blockTrialUsers, async (req, re
       description,
       type: 'sequence',
       sequence: {
-        messages: parsedSequence.messages.map(msg => {
+        messages: parsedSequence.messages.map((msg, index) => {
+          // O frontend pode enviar text/caption diretamente ou dentro de content
+          const text = msg.content?.text || msg.text || '';
+          const caption = msg.content?.caption || msg.caption || '';
+          
           const messageData = {
-            order: msg.order,
+            order: msg.order || (index + 1),
             type: msg.type,
             delay: msg.delay || 5,
             content: {
-              text: msg.content?.text || '',
-              caption: msg.content?.caption || ''
+              text: text,
+              caption: caption
             }
           };
 
@@ -746,6 +762,8 @@ router.get('/templates/list', authenticateToken, blockTrialUsers, async (req, re
         totalDelay: parsedSequence.messages.reduce((total, msg) => total + (msg.delay || 5), 0)
       }
     };
+    
+    console.log('📤 Template data preparado:', JSON.stringify(templateData, null, 2));
 
       const template = new Template(templateData);
       await template.save();
