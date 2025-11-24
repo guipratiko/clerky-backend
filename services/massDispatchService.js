@@ -4,8 +4,6 @@ const evolutionApi = require('./evolutionApi');
 const phoneService = require('./phoneService');
 const socketManager = require('../utils/socketManager');
 const templateUtils = require('../utils/templateUtils');
-const fs = require('fs');
-const path = require('path');
 
 class MassDispatchService {
   constructor() {
@@ -430,20 +428,24 @@ class MassDispatchService {
             break;
 
           case 'image':
+            const imageMediaType = processedTemplate.content.mediaType || 'image';
+            console.log(`📤 Enviando imagem/vídeo com mediaType: ${imageMediaType}`);
             result = await evolutionApi.sendMedia(
               dispatch.instanceName,
               number,
               processedTemplate.content.media,
-              processedTemplate.content.mediaType || 'image'
+              imageMediaType
             );
             break;
 
           case 'image_caption':
+            const imageCaptionMediaType = processedTemplate.content.mediaType || 'image';
+            console.log(`📤 Enviando imagem/vídeo com legenda, mediaType: ${imageCaptionMediaType}`);
             result = await evolutionApi.sendMedia(
               dispatch.instanceName,
               number,
               processedTemplate.content.media,
-              processedTemplate.content.mediaType || 'image',
+              imageCaptionMediaType,
               processedTemplate.content.caption
             );
             break;
