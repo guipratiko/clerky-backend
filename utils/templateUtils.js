@@ -89,21 +89,43 @@ function processTemplate(template, variables = {}, defaultName = 'Cliente') {
   if (processedTemplate.type === 'sequence' && processedTemplate.sequence) {
     processedTemplate.sequence = {
       ...processedTemplate.sequence,
-      messages: processedTemplate.sequence.messages.map(msg => {
+      messages: processedTemplate.sequence.messages.map((msg, idx) => {
         // Acessar content corretamente - pode estar em msg.content ou msg._doc?.content
         const msgContent = msg.content || msg._doc?.content || {};
-        return {
+        const msgType = msg.type || msg._doc?.type || '';
+        
+        // Debug para vídeo com legenda
+        if (msgType === 'video_caption') {
+          console.log(`🔍 DEBUG templateUtils - Mensagem ${idx + 1} (video_caption):`);
+          console.log(`   msg.content:`, msg.content);
+          console.log(`   msg._doc?.content:`, msg._doc?.content);
+          console.log(`   msgContent:`, msgContent);
+          console.log(`   msgContent.caption:`, msgContent.caption);
+          console.log(`   typeof msgContent.caption:`, typeof msgContent.caption);
+        }
+        
+        const processedMsg = {
           ...msg,
           content: {
             ...msgContent,
             text: msgContent.text ? replaceTemplateVariables(msgContent.text, variables, defaultName) : '',
-            caption: msgContent.caption ? replaceTemplateVariables(msgContent.caption, variables, defaultName) : '',
+            // Caption: verificar se existe (mesmo que seja string vazia, mas não null/undefined)
+            caption: (msgContent.caption !== undefined && msgContent.caption !== null) 
+              ? replaceTemplateVariables(String(msgContent.caption), variables, defaultName) 
+              : '',
             // Preservar outros campos do content (media, mediaType, fileName)
             media: msgContent.media,
             mediaType: msgContent.mediaType,
             fileName: msgContent.fileName
           }
         };
+        
+        // Debug após processamento
+        if (msgType === 'video_caption') {
+          console.log(`   processedMsg.content.caption:`, processedMsg.content.caption);
+        }
+        
+        return processedMsg;
       })
     };
     return processedTemplate;
