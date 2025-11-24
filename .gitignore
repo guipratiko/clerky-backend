@@ -50,3 +50,10 @@ jspm_packages/
 # OS
 .DS_Store
 Thumbs.db
+
+# App Store Connect Keys (chaves privadas - NUNCA commitar!)
+keys/*.p8
+*.p8
+
+# Uploads (arquivos enviados pelos usuários - NUNCA commitar!)
+uploads/
