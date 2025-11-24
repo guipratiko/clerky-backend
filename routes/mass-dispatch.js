@@ -115,6 +115,39 @@ const ensureUploadDir = async () => {
 };
 ensureUploadDir();
 
+// Middleware para tratar erros do multer
+const handleMulterError = (err, req, res, next) => {
+  if (err instanceof multer.MulterError) {
+    console.error('❌ Erro do Multer:', err.code, err.message);
+    if (err.code === 'LIMIT_FILE_SIZE') {
+      return res.status(400).json({
+        success: false,
+        error: 'Arquivo muito grande. Tamanho máximo: 10MB'
+      });
+    }
+    if (err.code === 'LIMIT_UNEXPECTED_FILE') {
+      return res.status(400).json({
+        success: false,
+        error: 'Campo de arquivo inesperado'
+      });
+    }
+    return res.status(400).json({
+      success: false,
+      error: err.message || 'Erro ao fazer upload do arquivo'
+    });
+  }
+  if (err) {
+    // Erro do fileFilter ou outro erro
+    console.error('❌ Erro no upload:', err.message);
+    console.error('   Stack:', err.stack);
+    return res.status(400).json({
+      success: false,
+      error: err.message || 'Erro ao validar arquivo'
+    });
+  }
+  next();
+};
+
 const deleteMediaFileIfExists = async (mediaUrl) => {
   if (!mediaUrl) return;
   try {
@@ -315,7 +348,7 @@ router.post('/', authenticateToken, blockTrialUsers, async (req, res) => {
 });
 
 // Upload de arquivo com números
-router.post('/:id/upload-numbers', authenticateToken, blockTrialUsers, upload.single('file'), async (req, res) => {
+router.post('/:id/upload-numbers', authenticateToken, blockTrialUsers, upload.single('file'), handleMulterError, async (req, res) => {
   try {
     const { id } = req.params;
     const { numbers: manualNumbers } = req.body;
@@ -652,7 +685,7 @@ router.get('/templates/list', authenticateToken, blockTrialUsers, async (req, re
 });
 
 // Criar template de sequência
-  router.post('/templates/sequence', authenticateToken, blockTrialUsers, upload.array('media', 10), async (req, res) => {
+  router.post('/templates/sequence', authenticateToken, blockTrialUsers, upload.array('media', 10), handleMulterError, async (req, res) => {
     try {
       const { name, description, sequence } = req.body;
 
@@ -732,7 +765,7 @@ router.get('/templates/list', authenticateToken, blockTrialUsers, async (req, re
 });
 
 // Criar template
-router.post('/templates', authenticateToken, blockTrialUsers, upload.single('media'), async (req, res) => {
+router.post('/templates', authenticateToken, blockTrialUsers, upload.single('media'), handleMulterError, async (req, res) => {
   try {
     const { name, description, type, text, caption, fileName } = req.body;
 
@@ -847,7 +880,9 @@ router.post('/templates', authenticateToken, blockTrialUsers, upload.single('med
     });
 
   } catch (error) {
-    console.error('Erro ao criar template:', error);
+    console.error('❌ Erro ao criar template:', error);
+    console.error('   Mensagem:', error.message);
+    console.error('   Stack:', error.stack);
     
     // Remover arquivo se houve erro
     if (req.file) {
@@ -860,13 +895,14 @@ router.post('/templates', authenticateToken, blockTrialUsers, upload.single('med
     
     res.status(500).json({
       success: false,
-      error: error.message || 'Erro interno do servidor'
+      error: error.message || 'Erro interno do servidor',
+      details: process.env.NODE_ENV === 'development' ? error.stack : undefined
     });
   }
 });
 
 // Atualizar template
-router.put('/templates/:id', authenticateToken, blockTrialUsers, upload.array('media', 10), async (req, res) => {
+router.put('/templates/:id', authenticateToken, blockTrialUsers, upload.array('media', 10), handleMulterError, async (req, res) => {
   try {
     const { id } = req.params;
     const { name, description, type } = req.body;
