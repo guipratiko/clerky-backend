@@ -367,20 +367,50 @@ class MassDispatchService {
       // Obter nome padrão das configurações
       const defaultName = dispatch.settings?.personalization?.defaultName || 'Cliente';
 
+      // Debug: verificar o que está chegando do numberData
+      console.log(`\n🔍 DEBUG - Dados recebidos do numberData:`, {
+        formatted: numberData.formatted,
+        contactName: numberData.contactName,
+        whatsappName: numberData.whatsappName,
+        original: numberData.original,
+        fullObject: JSON.stringify(numberData)
+      });
+
       // Preparar variáveis para substituição
+      // A prioridade será resolvida no templateUtils:
+      // 1. userProvidedName (nome fornecido pelo usuário)
+      // 2. whatsappName (nome retornado pelo WhatsApp)
+      // 3. defaultName (Cliente ou personalizado)
       const variables = {
-        userProvidedName: contactName,
-        whatsappName: whatsappName,
-        name: contactName || whatsappName || defaultName,
-        contactName: contactName || whatsappName || defaultName,
+        userProvidedName: contactName, // Nome fornecido pelo usuário (pode ser null)
+        whatsappName: whatsappName, // Nome do WhatsApp (pode ser null)
+        name: contactName || whatsappName || defaultName, // Nome final para referência
+        contactName: contactName || whatsappName || defaultName, // Nome final para referência
         number: number,
         originalNumber: original,
         formatted: number,
         original: original
       };
 
-      // Processar template com variáveis
+      console.log(`\n📝 ===========================================`);
+      console.log(`📝 Processando mensagem para ${number}`);
+      console.log(`   Variáveis recebidas:`);
+      console.log(`     - userProvidedName: ${contactName !== null && contactName !== undefined ? `"${contactName}"` : 'null'}`);
+      console.log(`     - whatsappName: ${whatsappName !== null && whatsappName !== undefined ? `"${whatsappName}"` : 'null'}`);
+      console.log(`     - defaultName: "${defaultName}"`);
+      console.log(`     - originalNumber: "${original}"`);
+      console.log(`   Template ANTES de processar:`);
+      console.log(`     - type: ${template?.type}`);
+      console.log(`     - text: "${template?.content?.text}"`);
+      console.log(`   Chamando processTemplate...`);
+
+      // Processar template com variáveis (sempre ativo)
       const processedTemplate = templateUtils.processTemplate(template, variables, defaultName);
+      
+      console.log(`   Template DEPOIS de processar:`);
+      console.log(`     - type: ${processedTemplate?.type}`);
+      console.log(`     - text: "${processedTemplate?.content?.text}"`);
+      console.log(`📝 ===========================================\n`);
       
       if (processedTemplate.type === 'sequence') {
         // Enviar sequência de mensagens
@@ -528,14 +558,6 @@ class MassDispatchService {
       const delay = messageData.delay;
       const content = message.content; // Usar o conteúdo processado
       
-      console.log(`📋 Processando mensagem ${order} do tipo "${type}" para ${number}`);
-      if (content?.media) {
-        console.log(`   📎 Mídia: ${content.media}`);
-        console.log(`   📎 Tipo de mídia: ${content.mediaType || 'não especificado'}`);
-      }
-      if (content?.caption) {
-        console.log(`   📝 Legenda: ${content.caption}`);
-      }
       
       // Validar se a mensagem tem os campos obrigatórios
       if (!order || !type) {
@@ -581,27 +603,15 @@ class MassDispatchService {
             break;
 
           case 'video':
-            console.log(`🎥 Enviando vídeo para ${number}:`, {
-              media: content.media,
-              mediaType: 'video',
-              fileName: content.fileName
-            });
             result = await evolutionApi.sendMedia(
               instanceName,
               number,
               content.media,
               'video'
             );
-            console.log(`✅ Vídeo enviado com sucesso:`, result?.key?.id || 'ID não disponível');
             break;
 
           case 'video_caption':
-            console.log(`🎥 Enviando vídeo com legenda para ${number}:`, {
-              media: content.media,
-              mediaType: 'video',
-              caption: content.caption,
-              fileName: content.fileName
-            });
             result = await evolutionApi.sendMedia(
               instanceName,
               number,
@@ -609,7 +619,6 @@ class MassDispatchService {
               'video',
               content.caption
             );
-            console.log(`✅ Vídeo com legenda enviado com sucesso:`, result?.key?.id || 'ID não disponível');
             break;
 
           case 'audio':
@@ -659,11 +668,7 @@ class MassDispatchService {
         }
 
       } catch (error) {
-        console.error(`❌ Erro ao enviar mensagem ${order} (tipo: ${type}) para ${number}:`, error.message);
-        console.error(`   Detalhes do erro:`, error);
-        if (content?.media) {
-          console.error(`   URL de mídia: ${content.media}`);
-        }
+        console.error(`❌ Erro ao enviar mensagem ${order} para ${number}:`, error.message);
         
         results.push({
           order: order,

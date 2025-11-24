@@ -104,7 +104,7 @@ class N8nService {
       const integrations = await this.findActiveIntegrations(userId, instanceName, eventType);
       
       if (integrations.length === 0) {
-        // Log removido - muito verboso
+        console.log(`📭 N8N: Nenhuma integração ativa para evento ${eventType} (usuário: ${userId}, instância: ${instanceName})`);
         return { sent: 0, integrations: [] };
       }
 

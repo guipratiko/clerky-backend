@@ -687,6 +687,9 @@ router.get('/templates/list', authenticateToken, blockTrialUsers, async (req, re
 // Criar template de sequência
   router.post('/templates/sequence', authenticateToken, blockTrialUsers, upload.array('media', 10), handleMulterError, async (req, res) => {
     try {
+      // Garantir que o diretório existe
+      await ensureUploadDir();
+      
       const { name, description, sequence } = req.body;
 
       console.log('📥 Dados recebidos para criar template de sequência:');
@@ -695,6 +698,20 @@ router.get('/templates/list', authenticateToken, blockTrialUsers, async (req, re
       console.log('   - sequence (tipo):', typeof sequence);
       console.log('   - sequence (valor):', sequence);
       console.log('   - files:', req.files?.length || 0);
+      
+      // Log detalhado dos arquivos recebidos
+      if (req.files && req.files.length > 0) {
+        console.log('📦 Arquivos recebidos pelo multer:');
+        req.files.forEach((file, idx) => {
+          console.log(`   ${idx + 1}. ${file.originalname}`);
+          console.log(`      - Tamanho: ${file.size} bytes`);
+          console.log(`      - MIME: ${file.mimetype}`);
+          console.log(`      - Salvo como: ${file.filename}`);
+          console.log(`      - Caminho: ${file.path}`);
+        });
+      } else {
+        console.warn('⚠️ Nenhum arquivo recebido pelo multer!');
+      }
 
     // Parse da sequência se for string
     let parsedSequence = sequence;
@@ -726,6 +743,11 @@ router.get('/templates/list', authenticateToken, blockTrialUsers, async (req, re
     const mediaFiles = req.files || [];
     let mediaIndex = 0;
 
+    console.log(`📦 Total de arquivos recebidos: ${mediaFiles.length}`);
+    mediaFiles.forEach((file, idx) => {
+      console.log(`   Arquivo ${idx + 1}: ${file.originalname} (${file.mimetype}) - Salvo como: ${file.filename}`);
+    });
+
     const templateData = {
       userId: req.user._id,
       name,
@@ -747,11 +769,11 @@ router.get('/templates/list', authenticateToken, blockTrialUsers, async (req, re
             }
           };
 
-          // Se a mensagem precisa de mídia
+          // Se a mensagem precisa de mídia e há arquivos disponíveis
           if (['image', 'image_caption', 'video', 'video_caption', 'audio', 'file', 'file_caption'].includes(msg.type)) {
-            // Se há arquivo no upload, usar o arquivo
             if (mediaFiles[mediaIndex]) {
               const file = mediaFiles[mediaIndex];
+              console.log(`📎 Associando arquivo ${mediaIndex + 1} (${file.originalname}) à mensagem ${messageData.order} (tipo: ${msg.type})`);
               messageData.content.media = `${process.env.BASE_URL}/uploads/mass-dispatch/${file.filename}`;
               
               // Detectar tipo de mídia
@@ -769,14 +791,8 @@ router.get('/templates/list', authenticateToken, blockTrialUsers, async (req, re
               
               messageData.content.fileName = file.originalname;
               mediaIndex++;
-            } 
-            // Se não há arquivo mas há URL no content.media, usar a URL diretamente
-            else if (msg.content?.media) {
-              messageData.content.media = msg.content.media;
-              messageData.content.mediaType = msg.content.mediaType || (msg.type.includes('video') ? 'video' : msg.type.includes('image') ? 'image' : msg.type.includes('audio') ? 'audio' : 'document');
-              if (msg.content.fileName) {
-                messageData.content.fileName = msg.content.fileName;
-              }
+            } else {
+              console.warn(`⚠️ Mensagem ${messageData.order} (tipo: ${msg.type}) requer mídia mas não há arquivo disponível no índice ${mediaIndex}`);
             }
           }
 
