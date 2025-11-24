@@ -1070,11 +1070,15 @@ const handleEventTrigger = async (instanceName, eventName, payload = {}) => {
     const isMessageEvent = typeof eventName === 'string' && eventName.toLowerCase().includes('message');
 
     if (isMessageEvent && fromMeFlag) {
-      log('MindClerky: ignorando evento originado pela própria instância', {
-        eventName,
-        instanceName,
-        messageId: dataKey?.id || dataPayload?.keyId || null
-      });
+      // Não logar eventos messages.update com SERVER_ACK (confirmações de entrega)
+      const isServerAck = eventName === 'messages.update' && (dataPayload?.status === 'SERVER_ACK' || data?.status === 'SERVER_ACK');
+      if (!isServerAck) {
+        log('MindClerky: ignorando evento originado pela própria instância', {
+          eventName,
+          instanceName,
+          messageId: dataKey?.id || dataPayload?.keyId || null
+        });
+      }
       return;
     }
 

@@ -15,23 +15,28 @@ const path = require('path');
 const { v4: uuidv4 } = require('uuid');
 // const ffmpeg = require('fluent-ffmpeg'); // Removido - não é mais necessário
 
-// Middleware para log detalhado dos webhooks
+// Middleware para log detalhado dos webhooks (reduzido para eventos menos importantes)
 router.use((req, res, next) => {
-  const timestamp = new Date().toISOString();
-  const separator = '='.repeat(80);
+  const { event, data } = req.body || {};
   
-  console.log(`\n${separator}`);
-  console.log(`📥 WEBHOOK RECEBIDO - ${timestamp}`);
-  console.log(`${separator}`);
-  console.log(`🔗 URL: ${req.method} ${req.originalUrl}`);
-  console.log(`🌍 IP: ${req.ip || req.connection.remoteAddress}`);
-  console.log(`🔧 User-Agent: ${req.get('User-Agent') || 'N/A'}`);
-  console.log(`📋 Content-Type: ${req.get('Content-Type') || 'N/A'}`);
-  console.log(`\n📄 HEADERS:`);
-  console.log(JSON.stringify(req.headers, null, 2));
-  console.log(`\n📦 BODY (${req.get('Content-Length') || 'unknown'} bytes):`);
-  console.log(JSON.stringify(req.body, null, 2));
-  console.log(`${separator}\n`);
+  // Não logar eventos messages.update com SERVER_ACK (confirmações de entrega)
+  if (event === 'messages.update' && data?.status === 'SERVER_ACK') {
+    return next();
+  }
+  
+  // Log reduzido para outros eventos messages.update
+  if (event === 'messages.update') {
+    console.log(`📡 ${event} - ${req.params.instanceName || 'unknown'}`);
+    return next();
+  }
+  
+  // Log completo apenas para eventos importantes
+  const importantEvents = ['messages.upsert', 'MESSAGES_UPSERT', 'qrcode.updated', 'QRCODE_UPDATED', 'connection.update', 'CONNECTION_UPDATE'];
+  if (importantEvents.includes(event)) {
+    const timestamp = new Date().toISOString();
+    console.log(`\n📥 ${event} - ${req.params.instanceName || 'unknown'} - ${timestamp}`);
+  }
+  
   next();
 });
 
@@ -41,7 +46,10 @@ router.post('/api/:instanceName', async (req, res) => {
     const { instanceName } = req.params;
     const { event, data } = req.body;
 
-    console.log(`📡 Evento recebido: ${event} para instância: ${instanceName}`);
+    // Log apenas para eventos importantes (messages.update com SERVER_ACK já é filtrado no middleware)
+    if (event !== 'messages.update' || data?.status !== 'SERVER_ACK') {
+      console.log(`📡 ${event} - ${instanceName}`);
+    }
 
     // Verificar se a instância existe
     const instance = await Instance.findOne({ instanceName });
@@ -338,7 +346,15 @@ async function handleMessagesUpsert(instanceName, data) {
 
 async function handleMessagesUpdate(instanceName, data) {
   try {
-    console.log(`📝 Mensagens atualizadas: ${instanceName}`);
+    // Não logar confirmações de entrega (SERVER_ACK)
+    if (data?.status === 'SERVER_ACK') {
+      return;
+    }
+    
+    // Log apenas para atualizações importantes (reações, status diferentes de SERVER_ACK)
+    if (data?.status && data.status !== 'SERVER_ACK') {
+      console.log(`📝 Mensagem atualizada: ${instanceName} - Status: ${data.status}`);
+    }
     
     if (!data.messages || !Array.isArray(data.messages)) return;
 
@@ -413,7 +429,7 @@ async function handleContactsUpsert(instanceName, data) {
 
 async function handleContactsUpdate(instanceName, data) {
   try {
-    console.log(`👤 Contato atualizado: ${instanceName}`);
+    // Log removido - evento muito frequente e não crítico
     await processContact(instanceName, data);
   } catch (error) {
     console.error('Erro no CONTACTS_UPDATE:', error);
@@ -436,7 +452,7 @@ async function handleChatsUpsert(instanceName, data) {
 
 async function handleChatsUpdate(instanceName, data) {
   try {
-    console.log(`💬 Conversa atualizada: ${instanceName}`);
+    // Log removido - evento muito frequente e não crítico
     await processChat(instanceName, data);
   } catch (error) {
     console.error('Erro no CHATS_UPDATE:', error);

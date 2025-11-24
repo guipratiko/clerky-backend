@@ -530,12 +530,17 @@ class MassDispatchService {
       const message = sortedMessages[i];
       
       // Extrair dados corretos do objeto Mongoose DocumentArray
+      // Quando vem do banco: message._doc existe e tem os dados
+      // Quando vem do processTemplate: message já é um objeto simples com content processado
       const messageData = message._doc || message;
-      const order = messageData.order;
-      const type = messageData.type;
-      const delay = messageData.delay;
-      // Acessar content corretamente - pode estar em messageData.content ou message.content
-      const content = messageData.content || message.content || {};
+      const order = messageData.order || message.order;
+      const type = messageData.type || message.type;
+      const delay = messageData.delay || message.delay;
+      
+      // Acessar content corretamente
+      // Prioridade: message.content (processado pelo templateUtils) > messageData.content (do banco) > {}
+      // IMPORTANTE: message.content tem prioridade porque vem do processTemplate já processado
+      const content = message.content || messageData.content || {};
       
       // Validar se a mensagem tem os campos obrigatórios
       if (!order || !type) {

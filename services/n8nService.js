@@ -104,7 +104,11 @@ class N8nService {
       const integrations = await this.findActiveIntegrations(userId, instanceName, eventType);
       
       if (integrations.length === 0) {
-        console.log(`📭 N8N: Nenhuma integração ativa para evento ${eventType} (usuário: ${userId}, instância: ${instanceName})`);
+        // Não logar quando não há integração para eventos muito frequentes
+        const frequentEvents = ['messages.update', 'chats.update', 'contacts.update'];
+        if (!frequentEvents.includes(eventType)) {
+          console.log(`📭 N8N: Nenhuma integração ativa para evento ${eventType} (usuário: ${userId}, instância: ${instanceName})`);
+        }
         return { sent: 0, integrations: [] };
       }
 
