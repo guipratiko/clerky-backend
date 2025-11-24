@@ -89,14 +89,22 @@ function processTemplate(template, variables = {}, defaultName = 'Cliente') {
   if (processedTemplate.type === 'sequence' && processedTemplate.sequence) {
     processedTemplate.sequence = {
       ...processedTemplate.sequence,
-      messages: processedTemplate.sequence.messages.map(msg => ({
-        ...msg,
-        content: {
-          ...msg.content,
-          text: msg.content.text ? replaceTemplateVariables(msg.content.text, variables, defaultName) : '',
-          caption: msg.content.caption ? replaceTemplateVariables(msg.content.caption, variables, defaultName) : ''
-        }
-      }))
+      messages: processedTemplate.sequence.messages.map(msg => {
+        // Acessar content corretamente - pode estar em msg.content ou msg._doc?.content
+        const msgContent = msg.content || msg._doc?.content || {};
+        return {
+          ...msg,
+          content: {
+            ...msgContent,
+            text: msgContent.text ? replaceTemplateVariables(msgContent.text, variables, defaultName) : '',
+            caption: msgContent.caption ? replaceTemplateVariables(msgContent.caption, variables, defaultName) : '',
+            // Preservar outros campos do content (media, mediaType, fileName)
+            media: msgContent.media,
+            mediaType: msgContent.mediaType,
+            fileName: msgContent.fileName
+          }
+        };
+      })
     };
     return processedTemplate;
   }

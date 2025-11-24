@@ -545,8 +545,22 @@ class MassDispatchService {
       };
     }
     
+    console.log(`📋 Processando sequência para ${number}:`, {
+      totalMessages: sequence.messages.length,
+      messages: sequence.messages.map(msg => ({
+        order: msg.order || msg._doc?.order,
+        type: msg.type || msg._doc?.type,
+        hasCaption: !!(msg.content?.caption || msg._doc?.content?.caption),
+        caption: msg.content?.caption || msg._doc?.content?.caption || '(sem legenda)'
+      }))
+    });
+    
     // Ordenar mensagens por ordem
-    const sortedMessages = sequence.messages.sort((a, b) => a.order - b.order);
+    const sortedMessages = sequence.messages.sort((a, b) => {
+      const orderA = a.order || a._doc?.order || 0;
+      const orderB = b.order || b._doc?.order || 0;
+      return orderA - orderB;
+    });
     
     for (let i = 0; i < sortedMessages.length; i++) {
       const message = sortedMessages[i];
@@ -556,7 +570,15 @@ class MassDispatchService {
       const order = messageData.order;
       const type = messageData.type;
       const delay = messageData.delay;
-      const content = message.content; // Usar o conteúdo processado
+      // Acessar content corretamente - pode estar em messageData.content ou message.content
+      const content = messageData.content || message.content || {};
+      
+      console.log(`📤 Enviando mensagem ${order} (tipo: ${type}):`, {
+        hasMedia: !!content.media,
+        hasCaption: !!content.caption,
+        caption: content.caption || '(sem legenda)',
+        mediaType: content.mediaType
+      });
       
       
       // Validar se a mensagem tem os campos obrigatórios
