@@ -15,23 +15,15 @@ const path = require('path');
 const { v4: uuidv4 } = require('uuid');
 // const ffmpeg = require('fluent-ffmpeg'); // Removido - não é mais necessário
 
-// Middleware para log detalhado dos webhooks
+// Middleware para log simplificado dos webhooks (apenas erros e eventos importantes)
 router.use((req, res, next) => {
-  const timestamp = new Date().toISOString();
-  const separator = '='.repeat(80);
+  // Log apenas eventos importantes ou erros
+  const importantEvents = ['messages.upsert', 'MESSAGES_UPSERT', 'connection.update', 'CONNECTION_UPDATE'];
+  const event = req.body?.event;
   
-  console.log(`\n${separator}`);
-  console.log(`📥 WEBHOOK RECEBIDO - ${timestamp}`);
-  console.log(`${separator}`);
-  console.log(`🔗 URL: ${req.method} ${req.originalUrl}`);
-  console.log(`🌍 IP: ${req.ip || req.connection.remoteAddress}`);
-  console.log(`🔧 User-Agent: ${req.get('User-Agent') || 'N/A'}`);
-  console.log(`📋 Content-Type: ${req.get('Content-Type') || 'N/A'}`);
-  console.log(`\n📄 HEADERS:`);
-  console.log(JSON.stringify(req.headers, null, 2));
-  console.log(`\n📦 BODY (${req.get('Content-Length') || 'unknown'} bytes):`);
-  console.log(JSON.stringify(req.body, null, 2));
-  console.log(`${separator}\n`);
+  if (importantEvents.includes(event)) {
+    console.log(`📥 ${event} - ${req.params.instanceName || 'unknown'}`);
+  }
   next();
 });
 
@@ -41,7 +33,11 @@ router.post('/api/:instanceName', async (req, res) => {
     const { instanceName } = req.params;
     const { event, data } = req.body;
 
-    console.log(`📡 Evento recebido: ${event} para instância: ${instanceName}`);
+    // Log apenas eventos importantes
+    const importantEvents = ['messages.upsert', 'MESSAGES_UPSERT', 'connection.update', 'CONNECTION_UPDATE', 'qrcode.updated', 'QRCODE_UPDATED'];
+    if (importantEvents.includes(event)) {
+      console.log(`📡 ${event} - ${instanceName}`);
+    }
 
     // Verificar se a instância existe
     const instance = await Instance.findOne({ instanceName });
@@ -224,7 +220,6 @@ async function handleConnectionUpdate(instanceName, data) {
 // Função para sincronizar conversas automaticamente
 async function syncChatsForInstance(instanceName) {
   try {
-    console.log(`🔄 Sincronizando conversas automaticamente para: ${instanceName}`);
 
     // Buscar conversas na Evolution API
     const evolutionChats = await evolutionApi.findChats(instanceName);
@@ -312,7 +307,7 @@ async function syncChatsForInstance(instanceName) {
 
 async function handleMessagesUpsert(instanceName, data) {
   try {
-    console.log(`💬 Mensagens recebidas: ${instanceName}`);
+    // Log removido - muito verboso
     
     // Suporte para ambos os formatos de dados
     let messages = [];
@@ -338,8 +333,6 @@ async function handleMessagesUpsert(instanceName, data) {
 
 async function handleMessagesUpdate(instanceName, data) {
   try {
-    console.log(`📝 Mensagens atualizadas: ${instanceName}`);
-    
     if (!data.messages || !Array.isArray(data.messages)) return;
 
     for (const msg of data.messages) {
@@ -399,47 +392,41 @@ async function handleMessagesDelete(instanceName, data) {
 
 async function handleContactsUpsert(instanceName, data) {
   try {
-    console.log(`👥 Contatos atualizados: ${instanceName}`);
-    
     if (!data.contacts || !Array.isArray(data.contacts)) return;
 
     for (const contact of data.contacts) {
       await processContact(instanceName, contact);
     }
   } catch (error) {
-    console.error('Erro no CONTACTS_UPSERT:', error);
+    console.error('❌ Erro no CONTACTS_UPSERT:', error);
   }
 }
 
 async function handleContactsUpdate(instanceName, data) {
   try {
-    console.log(`👤 Contato atualizado: ${instanceName}`);
     await processContact(instanceName, data);
   } catch (error) {
-    console.error('Erro no CONTACTS_UPDATE:', error);
+    console.error('❌ Erro no CONTACTS_UPDATE:', error);
   }
 }
 
 async function handleChatsUpsert(instanceName, data) {
   try {
-    console.log(`💬 Conversas atualizadas: ${instanceName}`);
-    
     if (!data.chats || !Array.isArray(data.chats)) return;
 
     for (const chat of data.chats) {
       await processChat(instanceName, chat);
     }
   } catch (error) {
-    console.error('Erro no CHATS_UPSERT:', error);
+    console.error('❌ Erro no CHATS_UPSERT:', error);
   }
 }
 
 async function handleChatsUpdate(instanceName, data) {
   try {
-    console.log(`💬 Conversa atualizada: ${instanceName}`);
     await processChat(instanceName, data);
   } catch (error) {
-    console.error('Erro no CHATS_UPDATE:', error);
+    console.error('❌ Erro no CHATS_UPDATE:', error);
   }
 }
 
@@ -663,7 +650,7 @@ async function processContact(instanceName, contactData) {
       socketManager.notifyContactUpdate(instanceName, contact);
     }
 
-    console.log(`✅ Contato processado: ${contactId}`);
+    // Log removido - muito verboso
   } catch (error) {
     console.error('Erro ao processar contato:', error);
   }
@@ -711,7 +698,7 @@ async function processChat(instanceName, chatData) {
       socketManager.notifyChatUpdate(instanceName, chat);
     }
 
-    console.log(`✅ Conversa processada: ${chatId}`);
+    // Log removido - muito verboso
   } catch (error) {
     console.error('Erro ao processar conversa:', error);
   }
@@ -721,13 +708,6 @@ async function processChat(instanceName, chatData) {
 async function updateChatWithNewMessage(instanceName, chatId, message) {
   try {
     // Debug: log do conteúdo da mensagem
-    console.log('🔍 Atualizando chat com nova mensagem:', {
-      messageType: message.messageType,
-      content: message.content,
-      text: message.content.text,
-      caption: message.content.caption
-    });
-
     const lastMessage = {
       content: message.content.text || message.content.caption || getMessageTypeDescription(message.messageType),
       timestamp: message.timestamp,
@@ -736,7 +716,7 @@ async function updateChatWithNewMessage(instanceName, chatId, message) {
       messageType: message.messageType
     };
 
-    console.log('📝 Last message criada:', lastMessage);
+    // Log removido - muito verboso
 
     const updateData = {
       lastMessage,
@@ -766,13 +746,8 @@ async function updateChatWithNewMessage(instanceName, chatId, message) {
 
     if (chat) {
       if (isNewChat) {
-        console.log(`📢 Nova conversa criada via mensagem: ${chatId}`);
         socketManager.notifyNewChat(instanceName, chat);
       } else {
-        console.log(`🔄 Enviando notificação de chat atualizado para ${instanceName}:`, {
-          chatId: chat.chatId,
-          lastMessage: chat.lastMessage
-        });
         socketManager.notifyChatUpdate(instanceName, chat);
       }
     }
@@ -1220,7 +1195,7 @@ async function sendSentMessageToN8n(instanceName, message) {
     // Buscar a instância para obter o userId
     const instance = await Instance.findOne({ instanceName });
     if (!instance) {
-      console.log(`📭 N8N: Instância ${instanceName} não encontrada`);
+      // Log removido - muito verboso
       return;
     }
 
@@ -1270,7 +1245,7 @@ async function sendSentMessageToN8n(instanceName, message) {
       source: 'clerky-crm'
     };
 
-    console.log(`📡 N8N: Enviando mensagem enviada pelo CRM para N8N:`, JSON.stringify(eventData, null, 2));
+    // Log removido - muito verboso (JSON completo)
 
     // Enviar para integrações N8N
     const result = await n8nService.sendWebhook(userId, instanceName, 'MESSAGES_UPSERT', eventData);
@@ -1290,7 +1265,7 @@ async function sendToN8nIntegrations(instanceName, event, data) {
     // Buscar a instância para obter o userId
     const instance = await Instance.findOne({ instanceName });
     if (!instance) {
-      console.log(`📭 N8N: Instância ${instanceName} não encontrada`);
+      // Log removido - muito verboso
       return;
     }
 
@@ -1308,7 +1283,7 @@ async function sendToN8nIntegrations(instanceName, event, data) {
         source: 'evolution-api'
       };
       
-      console.log(`📡 N8N: Enviando MESSAGES_UPSERT para N8N:`, JSON.stringify(eventData, null, 2));
+      // Log removido - muito verboso (JSON completo)
     } else {
       // Para outros eventos, manter formato atual
       eventData = {
@@ -1323,9 +1298,7 @@ async function sendToN8nIntegrations(instanceName, event, data) {
     // Enviar para integrações N8N
     const result = await n8nService.sendWebhook(userId, instanceName, event, eventData);
     
-    if (result.sent > 0) {
-      console.log(`📡 N8N: ${result.sent}/${result.total} webhooks enviados para evento ${event}`);
-    }
+    // Log removido - muito verboso
   } catch (error) {
     console.error('❌ N8N: Erro ao enviar webhook:', error);
     throw error;

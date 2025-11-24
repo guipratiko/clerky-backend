@@ -1070,11 +1070,7 @@ const handleEventTrigger = async (instanceName, eventName, payload = {}) => {
     const isMessageEvent = typeof eventName === 'string' && eventName.toLowerCase().includes('message');
 
     if (isMessageEvent && fromMeFlag) {
-      log('MindClerky: ignorando evento originado pela própria instância', {
-        eventName,
-        instanceName,
-        messageId: dataKey?.id || dataPayload?.keyId || null
-      });
+      // Log removido - muito verboso
       return;
     }
 
@@ -1224,11 +1220,7 @@ const handleEventTrigger = async (instanceName, eventName, payload = {}) => {
         }).sort({ createdAt: -1 });
 
         if (existingCompletedExecution) {
-          log('MindClerky: Fluxo já foi finalizado para este contato, ignorando nova mensagem', {
-            flowId: flow._id.toString(),
-            contactId: contactId || contactPhone,
-            executionId: existingCompletedExecution._id.toString()
-          });
+          // Log removido - muito verboso
           continue;
         }
 
