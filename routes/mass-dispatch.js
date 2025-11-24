@@ -25,7 +25,7 @@ const storage = multer.diskStorage({
 const upload = multer({ 
   storage: storage,
   limits: {
-    fileSize: 10 * 1024 * 1024 // 10MB
+    fileSize: 200 * 1024 * 1024 // 200MB
   },
   fileFilter: function (req, file, cb) {
     // Aceitar CSV, XML, TXT, imagens, áudios e documentos
@@ -119,10 +119,10 @@ ensureUploadDir();
 const handleMulterError = (err, req, res, next) => {
   if (err instanceof multer.MulterError) {
     console.error('❌ Erro do Multer:', err.code, err.message);
-    if (err.code === 'LIMIT_FILE_SIZE') {
+      if (err.code === 'LIMIT_FILE_SIZE') {
       return res.status(400).json({
         success: false,
-        error: 'Arquivo muito grande. Tamanho máximo: 10MB'
+        error: 'Arquivo muito grande. Tamanho máximo: 200MB'
       });
     }
     if (err.code === 'LIMIT_UNEXPECTED_FILE') {
