@@ -585,6 +585,26 @@ const handleWhatsAppMessageNode = async (node, execution, flow) => {
         processedTemplate.content?.caption
       );
       break;
+    case 'video':
+      result = await evolutionApi.sendMedia(
+        instanceName,
+        formattedNumber,
+        processedTemplate.content?.media,
+        'video',
+        '',
+        processedTemplate.content?.fileName
+      );
+      break;
+    case 'video_caption':
+      result = await evolutionApi.sendMedia(
+        instanceName,
+        formattedNumber,
+        processedTemplate.content?.media,
+        'video',
+        processedTemplate.content?.caption,
+        processedTemplate.content?.fileName
+      );
+      break;
     case 'audio':
       result = await evolutionApi.sendAudioUrl(
         instanceName,

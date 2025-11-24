@@ -446,6 +446,28 @@ class MassDispatchService {
             );
             break;
 
+          case 'video':
+            result = await evolutionApi.sendMedia(
+              dispatch.instanceName,
+              number,
+              processedTemplate.content.media,
+              'video',
+              '',
+              processedTemplate.content.fileName
+            );
+            break;
+
+          case 'video_caption':
+            result = await evolutionApi.sendMedia(
+              dispatch.instanceName,
+              number,
+              processedTemplate.content.media,
+              'video',
+              processedTemplate.content.caption,
+              processedTemplate.content.fileName
+            );
+            break;
+
           case 'audio':
             result = await evolutionApi.sendAudioUrl(
               dispatch.instanceName,
@@ -580,6 +602,28 @@ class MassDispatchService {
               content.media,
               'image',
               content.caption
+            );
+            break;
+
+          case 'video':
+            result = await evolutionApi.sendMedia(
+              instanceName,
+              number,
+              content.media,
+              'video',
+              '',
+              content.fileName
+            );
+            break;
+
+          case 'video_caption':
+            result = await evolutionApi.sendMedia(
+              instanceName,
+              number,
+              content.media,
+              'video',
+              content.caption,
+              content.fileName
             );
             break;
 

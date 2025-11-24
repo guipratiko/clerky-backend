@@ -25,10 +25,10 @@ const storage = multer.diskStorage({
 const upload = multer({ 
   storage: storage,
   limits: {
-    fileSize: 10 * 1024 * 1024 // 10MB
+    fileSize: 50 * 1024 * 1024 // 50MB (aumentado para suportar vídeos)
   },
   fileFilter: function (req, file, cb) {
-    // Aceitar CSV, XML, TXT, imagens, áudios e documentos
+    // Aceitar CSV, XML, TXT, imagens, vídeos, áudios e documentos
     const allowedMimes = [
       'text/csv',
       'text/xml',
@@ -37,6 +37,11 @@ const upload = multer({
       'image/jpeg',
       'image/png',
       'image/gif',
+      'video/mp4',
+      'video/mpeg',
+      'video/quicktime',
+      'video/x-msvideo',
+      'video/webm',
       'audio/mpeg',
       'audio/mp3',
       'audio/wav',
@@ -648,12 +653,16 @@ router.get('/templates/list', authenticateToken, blockTrialUsers, async (req, re
           };
 
           // Se a mensagem precisa de mídia e há arquivos disponíveis
-          if (['image', 'image_caption', 'audio', 'file', 'file_caption'].includes(msg.type) && mediaFiles[mediaIndex]) {
+          if (['image', 'image_caption', 'video', 'video_caption', 'audio', 'file', 'file_caption'].includes(msg.type) && mediaFiles[mediaIndex]) {
             const file = mediaFiles[mediaIndex];
             messageData.content.media = `${process.env.BASE_URL}/uploads/mass-dispatch/${file.filename}`;
             messageData.content.mediaType = msg.type.includes('image') ? 'image' : 
+                                           msg.type.includes('video') ? 'video' :
                                            msg.type.includes('audio') ? 'audio' : 'document';
             messageData.content.fileName = file.originalname;
+            if (msg.type === 'video_caption' && msg.content?.caption) {
+              messageData.content.caption = msg.content.caption;
+            }
             mediaIndex++;
           }
 
@@ -732,6 +741,31 @@ router.post('/templates', authenticateToken, blockTrialUsers, upload.single('med
         }
         templateData.content.media = `${process.env.BASE_URL}/uploads/mass-dispatch/${req.file.filename}`;
         templateData.content.mediaType = 'image';
+        templateData.content.caption = caption;
+        break;
+
+      case 'video':
+        if (!req.file) {
+          return res.status(400).json({
+            success: false,
+            error: 'Arquivo de vídeo é obrigatório'
+          });
+        }
+        templateData.content.media = `${process.env.BASE_URL}/uploads/mass-dispatch/${req.file.filename}`;
+        templateData.content.mediaType = 'video';
+        templateData.content.fileName = fileName || req.file.originalname;
+        break;
+
+      case 'video_caption':
+        if (!req.file || !caption) {
+          return res.status(400).json({
+            success: false,
+            error: 'Arquivo de vídeo e legenda são obrigatórios'
+          });
+        }
+        templateData.content.media = `${process.env.BASE_URL}/uploads/mass-dispatch/${req.file.filename}`;
+        templateData.content.mediaType = 'video';
+        templateData.content.fileName = fileName || req.file.originalname;
         templateData.content.caption = caption;
         break;
 
@@ -925,7 +959,7 @@ router.put('/templates/:id', authenticateToken, blockTrialUsers, upload.array('m
           ? delayValue
           : (existingMessage?.delay || 5);
 
-        const requiresMedia = ['image', 'image_caption', 'audio', 'file', 'file_caption'].includes(messageType);
+        const requiresMedia = ['image', 'image_caption', 'video', 'video_caption', 'audio', 'file', 'file_caption'].includes(messageType);
         const hasNewMedia = normalizeBoolean(rawMessage.hasNewMedia);
         const textValue = Object.prototype.hasOwnProperty.call(rawMessage, 'text')
           ? rawMessage.text
@@ -973,11 +1007,13 @@ router.put('/templates/:id', authenticateToken, blockTrialUsers, upload.array('m
             newMessage.content.media = `${process.env.BASE_URL}/uploads/mass-dispatch/${file.filename}`;
             newMessage.content.mediaType = messageType.includes('image')
               ? 'image'
-              : messageType.includes('audio')
-                ? 'audio'
-                : 'document';
+              : messageType.includes('video')
+                ? 'video'
+                : messageType.includes('audio')
+                  ? 'audio'
+                  : 'document';
 
-            if (['audio', 'file', 'file_caption'].includes(messageType)) {
+            if (['video', 'video_caption', 'audio', 'file', 'file_caption'].includes(messageType)) {
               newMessage.content.fileName = file.originalname;
             }
           } else if (existingMessage?.content?.media) {
@@ -1010,7 +1046,7 @@ router.put('/templates/:id', authenticateToken, blockTrialUsers, upload.array('m
         totalDelay: updatedMessages.reduce((total, msg) => total + (msg.delay || 0), 0)
       };
     } else {
-      const requiresMedia = ['image', 'image_caption', 'audio', 'file', 'file_caption'].includes(template.type);
+      const requiresMedia = ['image', 'image_caption', 'video', 'video_caption', 'audio', 'file', 'file_caption'].includes(template.type);
       const newFile = getNextFile();
 
       if (template.type === 'text') {
@@ -1029,11 +1065,13 @@ router.put('/templates/:id', authenticateToken, blockTrialUsers, upload.array('m
             updatedContent.media = `${process.env.BASE_URL}/uploads/mass-dispatch/${newFile.filename}`;
             updatedContent.mediaType = template.type.includes('image')
               ? 'image'
-              : template.type.includes('audio')
-                ? 'audio'
-                : 'document';
+              : template.type.includes('video')
+                ? 'video'
+                : template.type.includes('audio')
+                  ? 'audio'
+                  : 'document';
 
-            if (['audio', 'file', 'file_caption'].includes(template.type)) {
+            if (['video', 'video_caption', 'audio', 'file', 'file_caption'].includes(template.type)) {
               updatedContent.fileName = req.body.fileName || newFile.originalname;
             } else {
               delete updatedContent.fileName;
@@ -1044,7 +1082,7 @@ router.put('/templates/:id', authenticateToken, blockTrialUsers, upload.array('m
               success: false,
               error: 'Arquivo de mídia é obrigatório para este template'
             });
-          } else if (['audio', 'file', 'file_caption'].includes(template.type) && req.body.fileName) {
+          } else if (['video', 'video_caption', 'audio', 'file', 'file_caption'].includes(template.type) && req.body.fileName) {
             updatedContent.fileName = req.body.fileName;
           }
         }
@@ -1059,8 +1097,11 @@ router.put('/templates/:id', authenticateToken, blockTrialUsers, upload.array('m
           delete updatedContent.caption;
         }
 
-        if (template.type === 'image') {
-          delete updatedContent.fileName;
+        if (template.type === 'image' || template.type === 'video') {
+          // Manter fileName apenas se não for image ou video simples (sem caption)
+          if (!template.type.includes('caption')) {
+            delete updatedContent.fileName;
+          }
         }
 
         if (!template.type.includes('caption') && req.body.text) {

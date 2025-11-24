@@ -160,12 +160,14 @@ class EvolutionApiService {
         mediatype: mediaType,
         caption: caption,
         media: media,
-        fileName: fileName || `file.${mediaType === 'image' ? 'jpg' : mediaType === 'audio' ? 'mp3' : 'pdf'}`
+        fileName: fileName || `file.${mediaType === 'image' ? 'jpg' : mediaType === 'video' ? 'mp4' : mediaType === 'audio' ? 'mp3' : 'pdf'}`
       };
 
       // Adicionar mimetype baseado no mediaType
       if (mediaType === 'image') {
         payload.mimetype = 'image/jpeg';
+      } else if (mediaType === 'video') {
+        payload.mimetype = 'video/mp4';
       } else if (mediaType === 'audio') {
         payload.mimetype = 'audio/mpeg';
       } else if (mediaType === 'document') {
