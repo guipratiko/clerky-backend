@@ -367,15 +367,6 @@ class MassDispatchService {
       // Obter nome padrão das configurações
       const defaultName = dispatch.settings?.personalization?.defaultName || 'Cliente';
 
-      // Debug: verificar o que está chegando do numberData
-      console.log(`\n🔍 DEBUG - Dados recebidos do numberData:`, {
-        formatted: numberData.formatted,
-        contactName: numberData.contactName,
-        whatsappName: numberData.whatsappName,
-        original: numberData.original,
-        fullObject: JSON.stringify(numberData)
-      });
-
       // Preparar variáveis para substituição
       // A prioridade será resolvida no templateUtils:
       // 1. userProvidedName (nome fornecido pelo usuário)
@@ -392,25 +383,8 @@ class MassDispatchService {
         original: original
       };
 
-      console.log(`\n📝 ===========================================`);
-      console.log(`📝 Processando mensagem para ${number}`);
-      console.log(`   Variáveis recebidas:`);
-      console.log(`     - userProvidedName: ${contactName !== null && contactName !== undefined ? `"${contactName}"` : 'null'}`);
-      console.log(`     - whatsappName: ${whatsappName !== null && whatsappName !== undefined ? `"${whatsappName}"` : 'null'}`);
-      console.log(`     - defaultName: "${defaultName}"`);
-      console.log(`     - originalNumber: "${original}"`);
-      console.log(`   Template ANTES de processar:`);
-      console.log(`     - type: ${template?.type}`);
-      console.log(`     - text: "${template?.content?.text}"`);
-      console.log(`   Chamando processTemplate...`);
-
       // Processar template com variáveis (sempre ativo)
       const processedTemplate = templateUtils.processTemplate(template, variables, defaultName);
-      
-      console.log(`   Template DEPOIS de processar:`);
-      console.log(`     - type: ${processedTemplate?.type}`);
-      console.log(`     - text: "${processedTemplate?.content?.text}"`);
-      console.log(`📝 ===========================================\n`);
       
       if (processedTemplate.type === 'sequence') {
         // Enviar sequência de mensagens
@@ -545,16 +519,6 @@ class MassDispatchService {
       };
     }
     
-    console.log(`📋 Processando sequência para ${number}:`, {
-      totalMessages: sequence.messages.length,
-      messages: sequence.messages.map(msg => ({
-        order: msg.order || msg._doc?.order,
-        type: msg.type || msg._doc?.type,
-        hasCaption: !!(msg.content?.caption || msg._doc?.content?.caption),
-        caption: msg.content?.caption || msg._doc?.content?.caption || '(sem legenda)'
-      }))
-    });
-    
     // Ordenar mensagens por ordem
     const sortedMessages = sequence.messages.sort((a, b) => {
       const orderA = a.order || a._doc?.order || 0;
@@ -572,14 +536,6 @@ class MassDispatchService {
       const delay = messageData.delay;
       // Acessar content corretamente - pode estar em messageData.content ou message.content
       const content = messageData.content || message.content || {};
-      
-      console.log(`📤 Enviando mensagem ${order} (tipo: ${type}):`, {
-        hasMedia: !!content.media,
-        hasCaption: !!content.caption,
-        caption: content.caption || '(sem legenda)',
-        mediaType: content.mediaType
-      });
-      
       
       // Validar se a mensagem tem os campos obrigatórios
       if (!order || !type) {
@@ -639,7 +595,7 @@ class MassDispatchService {
               number,
               content.media,
               'video',
-              content.caption
+              content.caption || ''
             );
             break;
 

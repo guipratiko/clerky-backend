@@ -73,15 +73,9 @@ const upload = multer({
     const fileExtension = path.extname(file.originalname).toLowerCase();
     const mimetype = file.mimetype ? file.mimetype.toLowerCase() : '';
     
-    // Log para debug
-    console.log(`📁 Validando arquivo: ${file.originalname}`);
-    console.log(`   - Extensão: ${fileExtension}`);
-    console.log(`   - MIME Type: ${mimetype || '(não fornecido)'}`);
-    
     // Primeiro, verificar se a extensão é válida (prioridade para extensão)
     if (allowedExtensions.includes(fileExtension)) {
       // Se a extensão for válida, aceitar independente do mimetype
-      console.log(`✅ Arquivo aceito (extensão válida): ${file.originalname} (${fileExtension})`);
       cb(null, true);
       return;
     }
@@ -90,17 +84,14 @@ const upload = multer({
     if (mimetype && allowedMimes.includes(mimetype)) {
       // Se for application/octet-stream, ainda precisa validar pela extensão
       if (mimetype === 'application/octet-stream') {
-        console.error(`❌ Arquivo rejeitado: ${file.originalname} - Tipo: ${mimetype}, Extensão: ${fileExtension} (octet-stream requer extensão válida)`);
         cb(new Error(`Tipo de arquivo não suportado: ${fileExtension || mimetype}. Tipos permitidos: CSV, XML, TXT, imagens (JPG, PNG, GIF, WEBP), áudios (MP3, WAV, OGG, WEBM, M4A), vídeos (MP4) e documentos (PDF, DOC, DOCX, XLS, XLSX)`), false);
         return;
       }
-      console.log(`✅ Arquivo aceito: ${file.originalname} (${mimetype})`);
       cb(null, true);
       return;
     }
     
     // Se nem extensão nem mimetype são válidos, rejeitar
-    console.error(`❌ Arquivo rejeitado: ${file.originalname} - Tipo: ${mimetype || '(não fornecido)'}, Extensão: ${fileExtension}`);
     cb(new Error(`Tipo de arquivo não suportado: ${fileExtension || mimetype || 'desconhecido'}. Tipos permitidos: CSV, XML, TXT, imagens (JPG, PNG, GIF, WEBP), áudios (MP3, WAV, OGG, WEBM, M4A), vídeos (MP4) e documentos (PDF, DOC, DOCX, XLS, XLSX)`), false);
   }
 });
@@ -692,26 +683,6 @@ router.get('/templates/list', authenticateToken, blockTrialUsers, async (req, re
       
       const { name, description, sequence } = req.body;
 
-      console.log('📥 Dados recebidos para criar template de sequência:');
-      console.log('   - name:', name);
-      console.log('   - description:', description);
-      console.log('   - sequence (tipo):', typeof sequence);
-      console.log('   - sequence (valor):', sequence);
-      console.log('   - files:', req.files?.length || 0);
-      
-      // Log detalhado dos arquivos recebidos
-      if (req.files && req.files.length > 0) {
-        console.log('📦 Arquivos recebidos pelo multer:');
-        req.files.forEach((file, idx) => {
-          console.log(`   ${idx + 1}. ${file.originalname}`);
-          console.log(`      - Tamanho: ${file.size} bytes`);
-          console.log(`      - MIME: ${file.mimetype}`);
-          console.log(`      - Salvo como: ${file.filename}`);
-          console.log(`      - Caminho: ${file.path}`);
-        });
-      } else {
-        console.warn('⚠️ Nenhum arquivo recebido pelo multer!');
-      }
 
     // Parse da sequência se for string
     let parsedSequence = sequence;
@@ -720,7 +691,6 @@ router.get('/templates/list', authenticateToken, blockTrialUsers, async (req, re
         parsedSequence = JSON.parse(sequence);
       } catch (error) {
         console.error('❌ Erro ao fazer parse da sequência:', error);
-        console.error('   Sequência recebida:', sequence);
         return res.status(400).json({
           success: false,
           error: 'Formato inválido da sequência de mensagens: ' + error.message
@@ -729,10 +699,7 @@ router.get('/templates/list', authenticateToken, blockTrialUsers, async (req, re
     }
 
       if (!name || !parsedSequence || !parsedSequence.messages) {
-        console.error('❌ Validação falhou:');
-        console.error('   - name:', name);
-        console.error('   - parsedSequence:', parsedSequence);
-        console.error('   - parsedSequence.messages:', parsedSequence?.messages);
+        console.error('❌ Validação falhou: nome ou sequência inválida');
         return res.status(400).json({
           success: false,
           error: 'Nome e sequência de mensagens são obrigatórios. Nome: ' + (name ? 'OK' : 'FALTANDO') + ', Sequência: ' + (parsedSequence ? 'OK' : 'FALTANDO') + ', Mensagens: ' + (parsedSequence?.messages ? 'OK' : 'FALTANDO')
@@ -743,10 +710,6 @@ router.get('/templates/list', authenticateToken, blockTrialUsers, async (req, re
     const mediaFiles = req.files || [];
     let mediaIndex = 0;
 
-    console.log(`📦 Total de arquivos recebidos: ${mediaFiles.length}`);
-    mediaFiles.forEach((file, idx) => {
-      console.log(`   Arquivo ${idx + 1}: ${file.originalname} (${file.mimetype}) - Salvo como: ${file.filename}`);
-    });
 
     const templateData = {
       userId: req.user._id,
@@ -773,7 +736,6 @@ router.get('/templates/list', authenticateToken, blockTrialUsers, async (req, re
           if (['image', 'image_caption', 'video', 'video_caption', 'audio', 'file', 'file_caption'].includes(msg.type)) {
             if (mediaFiles[mediaIndex]) {
               const file = mediaFiles[mediaIndex];
-              console.log(`📎 Associando arquivo ${mediaIndex + 1} (${file.originalname}) à mensagem ${messageData.order} (tipo: ${msg.type})`);
               messageData.content.media = `${process.env.BASE_URL}/uploads/mass-dispatch/${file.filename}`;
               
               // Detectar tipo de mídia
@@ -791,8 +753,6 @@ router.get('/templates/list', authenticateToken, blockTrialUsers, async (req, re
               
               messageData.content.fileName = file.originalname;
               mediaIndex++;
-            } else {
-              console.warn(`⚠️ Mensagem ${messageData.order} (tipo: ${msg.type}) requer mídia mas não há arquivo disponível no índice ${mediaIndex}`);
             }
           }
 
@@ -801,8 +761,6 @@ router.get('/templates/list', authenticateToken, blockTrialUsers, async (req, re
         totalDelay: parsedSequence.messages.reduce((total, msg) => total + (msg.delay || 5), 0)
       }
     };
-    
-    console.log('📤 Template data preparado:', JSON.stringify(templateData, null, 2));
 
       const template = new Template(templateData);
       await template.save();
