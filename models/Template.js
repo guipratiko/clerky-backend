@@ -17,7 +17,7 @@ const templateSchema = new mongoose.Schema({
   },
   type: {
     type: String,
-    enum: ['text', 'image', 'image_caption', 'audio', 'file', 'file_caption', 'sequence'],
+    enum: ['text', 'image', 'image_caption', 'video', 'video_caption', 'audio', 'file', 'file_caption', 'sequence'],
     required: true
   },
   // Para templates simples (compatibilidade)
@@ -31,13 +31,13 @@ const templateSchema = new mongoose.Schema({
     media: {
       type: String, // URL ou caminho do arquivo
       required: function() {
-        return ['image', 'image_caption', 'audio', 'file', 'file_caption'].includes(this.type);
+        return ['image', 'image_caption', 'video', 'video_caption', 'audio', 'file', 'file_caption'].includes(this.type);
       }
     },
     mediaType: {
-      type: String, // image, audio, document
+      type: String, // image, video, audio, document
       required: function() {
-        return ['image', 'image_caption', 'audio', 'file', 'file_caption'].includes(this.type);
+        return ['image', 'image_caption', 'video', 'video_caption', 'audio', 'file', 'file_caption'].includes(this.type);
       }
     },
     fileName: {
@@ -49,7 +49,7 @@ const templateSchema = new mongoose.Schema({
     caption: {
       type: String,
       required: function() {
-        return ['image_caption', 'file_caption'].includes(this.type);
+        return ['image_caption', 'video_caption', 'file_caption'].includes(this.type);
       }
     }
   },
@@ -62,7 +62,7 @@ const templateSchema = new mongoose.Schema({
       },
       type: {
         type: String,
-        enum: ['text', 'image', 'image_caption', 'audio', 'file', 'file_caption'],
+        enum: ['text', 'image', 'image_caption', 'video', 'video_caption', 'audio', 'file', 'file_caption'],
         required: true
       },
       content: {

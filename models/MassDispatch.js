@@ -22,7 +22,7 @@ const massDispatchSchema = new mongoose.Schema({
   template: {
     type: {
       type: String,
-      enum: ['text', 'image', 'image_caption', 'audio', 'file', 'file_caption', 'sequence'],
+      enum: ['text', 'image', 'image_caption', 'video', 'video_caption', 'audio', 'file', 'file_caption', 'sequence'],
       required: true
     },
     content: {

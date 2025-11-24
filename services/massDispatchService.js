@@ -428,29 +428,44 @@ class MassDispatchService {
             break;
 
           case 'image':
-            const imageMediaType = processedTemplate.content.mediaType || 'image';
-            console.log(`📤 Enviando imagem/vídeo com mediaType: ${imageMediaType}`);
             result = await evolutionApi.sendMedia(
               dispatch.instanceName,
               number,
               processedTemplate.content.media,
-              imageMediaType
+              'image'
             );
             break;
 
-          case 'image_caption':
-            const imageCaptionMediaType = processedTemplate.content.mediaType || 'image';
-            console.log(`📤 Enviando imagem/vídeo com legenda, mediaType: ${imageCaptionMediaType}`);
-            result = await evolutionApi.sendMedia(
-              dispatch.instanceName,
-              number,
-              processedTemplate.content.media,
-              imageCaptionMediaType,
-              processedTemplate.content.caption
-            );
-            break;
+           case 'image_caption':
+             result = await evolutionApi.sendMedia(
+               dispatch.instanceName,
+               number,
+               processedTemplate.content.media,
+               processedTemplate.content.mediaType || 'image',
+               processedTemplate.content.caption
+             );
+             break;
 
-          case 'audio':
+           case 'video':
+             result = await evolutionApi.sendMedia(
+               dispatch.instanceName,
+               number,
+               processedTemplate.content.media,
+               'video'
+             );
+             break;
+
+           case 'video_caption':
+             result = await evolutionApi.sendMedia(
+               dispatch.instanceName,
+               number,
+               processedTemplate.content.media,
+               'video',
+               processedTemplate.content.caption
+             );
+             break;
+
+           case 'audio':
             result = await evolutionApi.sendAudioUrl(
               dispatch.instanceName,
               number,
@@ -583,6 +598,25 @@ class MassDispatchService {
               number,
               content.media,
               content.mediaType || 'image',
+              content.caption
+            );
+            break;
+
+          case 'video':
+            result = await evolutionApi.sendMedia(
+              instanceName,
+              number,
+              content.media,
+              'video'
+            );
+            break;
+
+          case 'video_caption':
+            result = await evolutionApi.sendMedia(
+              instanceName,
+              number,
+              content.media,
+              'video',
               content.caption
             );
             break;

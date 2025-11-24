@@ -25,7 +25,7 @@ const storage = multer.diskStorage({
 const upload = multer({ 
   storage: storage,
   limits: {
-    fileSize: 300 * 1024 * 1024 // 300MB
+    fileSize: 200 * 1024 * 1024 // 200MB
   },
   fileFilter: function (req, file, cb) {
     // Aceitar CSV, XML, TXT, imagens, áudios e documentos
@@ -122,7 +122,7 @@ const handleMulterError = (err, req, res, next) => {
       if (err.code === 'LIMIT_FILE_SIZE') {
       return res.status(400).json({
         success: false,
-        error: 'Arquivo muito grande. Tamanho máximo: 300MB'
+        error: 'Arquivo muito grande. Tamanho máximo: 200MB'
       });
     }
     if (err.code === 'LIMIT_UNEXPECTED_FILE') {
@@ -748,7 +748,7 @@ router.get('/templates/list', authenticateToken, blockTrialUsers, async (req, re
           };
 
           // Se a mensagem precisa de mídia e há arquivos disponíveis
-          if (['image', 'image_caption', 'audio', 'file', 'file_caption'].includes(msg.type) && mediaFiles[mediaIndex]) {
+          if (['image', 'image_caption', 'video', 'video_caption', 'audio', 'file', 'file_caption'].includes(msg.type) && mediaFiles[mediaIndex]) {
             const file = mediaFiles[mediaIndex];
             messageData.content.media = `${process.env.BASE_URL}/uploads/mass-dispatch/${file.filename}`;
             
@@ -757,6 +757,8 @@ router.get('/templates/list', authenticateToken, blockTrialUsers, async (req, re
               // Detectar se é vídeo MP4
               const isVideo = file.mimetype?.includes('video') || file.originalname?.toLowerCase().endsWith('.mp4');
               messageData.content.mediaType = isVideo ? 'video' : 'image';
+            } else if (msg.type.includes('video')) {
+              messageData.content.mediaType = 'video';
             } else if (msg.type.includes('audio')) {
               messageData.content.mediaType = 'audio';
             } else {
@@ -848,6 +850,29 @@ router.post('/templates', authenticateToken, blockTrialUsers, upload.single('med
         const isVideoCaption = req.file.mimetype?.includes('video') || req.file.originalname?.toLowerCase().endsWith('.mp4');
         templateData.content.media = `${process.env.BASE_URL}/uploads/mass-dispatch/${req.file.filename}`;
         templateData.content.mediaType = isVideoCaption ? 'video' : 'image';
+        templateData.content.caption = caption;
+        break;
+
+      case 'video':
+        if (!req.file) {
+          return res.status(400).json({
+            success: false,
+            error: 'Arquivo de vídeo é obrigatório'
+          });
+        }
+        templateData.content.media = `${process.env.BASE_URL}/uploads/mass-dispatch/${req.file.filename}`;
+        templateData.content.mediaType = 'video';
+        break;
+
+      case 'video_caption':
+        if (!req.file || !caption) {
+          return res.status(400).json({
+            success: false,
+            error: 'Arquivo de vídeo e legenda são obrigatórios'
+          });
+        }
+        templateData.content.media = `${process.env.BASE_URL}/uploads/mass-dispatch/${req.file.filename}`;
+        templateData.content.mediaType = 'video';
         templateData.content.caption = caption;
         break;
 
@@ -1044,7 +1069,7 @@ router.put('/templates/:id', authenticateToken, blockTrialUsers, upload.array('m
           ? delayValue
           : (existingMessage?.delay || 5);
 
-        const requiresMedia = ['image', 'image_caption', 'audio', 'file', 'file_caption'].includes(messageType);
+        const requiresMedia = ['image', 'image_caption', 'video', 'video_caption', 'audio', 'file', 'file_caption'].includes(messageType);
         const hasNewMedia = normalizeBoolean(rawMessage.hasNewMedia);
         const textValue = Object.prototype.hasOwnProperty.call(rawMessage, 'text')
           ? rawMessage.text
@@ -1092,9 +1117,11 @@ router.put('/templates/:id', authenticateToken, blockTrialUsers, upload.array('m
             newMessage.content.media = `${process.env.BASE_URL}/uploads/mass-dispatch/${file.filename}`;
             newMessage.content.mediaType = messageType.includes('image')
               ? 'image'
-              : messageType.includes('audio')
-                ? 'audio'
-                : 'document';
+              : messageType.includes('video')
+                ? 'video'
+                : messageType.includes('audio')
+                  ? 'audio'
+                  : 'document';
 
             if (['audio', 'file', 'file_caption'].includes(messageType)) {
               newMessage.content.fileName = file.originalname;
@@ -1152,6 +1179,8 @@ router.put('/templates/:id', authenticateToken, blockTrialUsers, upload.array('m
               // Detectar se é vídeo MP4
               const isVideo = newFile.mimetype?.includes('video') || newFile.originalname?.toLowerCase().endsWith('.mp4');
               updatedContent.mediaType = isVideo ? 'video' : 'image';
+            } else if (template.type.includes('video')) {
+              updatedContent.mediaType = 'video';
             } else if (template.type.includes('audio')) {
               updatedContent.mediaType = 'audio';
             } else {
