@@ -40,7 +40,7 @@ const massDispatchSchema = new mongoose.Schema({
         },
         type: {
           type: String,
-          enum: ['text', 'image', 'image_caption', 'audio', 'file', 'file_caption'],
+          enum: ['text', 'image', 'image_caption', 'video', 'video_caption', 'audio', 'file', 'file_caption'],
           required: true
         },
         content: {
