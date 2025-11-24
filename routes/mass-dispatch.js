@@ -747,26 +747,37 @@ router.get('/templates/list', authenticateToken, blockTrialUsers, async (req, re
             }
           };
 
-          // Se a mensagem precisa de mídia e há arquivos disponíveis
-          if (['image', 'image_caption', 'video', 'video_caption', 'audio', 'file', 'file_caption'].includes(msg.type) && mediaFiles[mediaIndex]) {
-            const file = mediaFiles[mediaIndex];
-            messageData.content.media = `${process.env.BASE_URL}/uploads/mass-dispatch/${file.filename}`;
-            
-            // Detectar tipo de mídia
-            if (msg.type.includes('image')) {
-              // Detectar se é vídeo MP4
-              const isVideo = file.mimetype?.includes('video') || file.originalname?.toLowerCase().endsWith('.mp4');
-              messageData.content.mediaType = isVideo ? 'video' : 'image';
-            } else if (msg.type.includes('video')) {
-              messageData.content.mediaType = 'video';
-            } else if (msg.type.includes('audio')) {
-              messageData.content.mediaType = 'audio';
-            } else {
-              messageData.content.mediaType = 'document';
+          // Se a mensagem precisa de mídia
+          if (['image', 'image_caption', 'video', 'video_caption', 'audio', 'file', 'file_caption'].includes(msg.type)) {
+            // Se há arquivo no upload, usar o arquivo
+            if (mediaFiles[mediaIndex]) {
+              const file = mediaFiles[mediaIndex];
+              messageData.content.media = `${process.env.BASE_URL}/uploads/mass-dispatch/${file.filename}`;
+              
+              // Detectar tipo de mídia
+              if (msg.type.includes('image')) {
+                // Detectar se é vídeo MP4
+                const isVideo = file.mimetype?.includes('video') || file.originalname?.toLowerCase().endsWith('.mp4');
+                messageData.content.mediaType = isVideo ? 'video' : 'image';
+              } else if (msg.type.includes('video')) {
+                messageData.content.mediaType = 'video';
+              } else if (msg.type.includes('audio')) {
+                messageData.content.mediaType = 'audio';
+              } else {
+                messageData.content.mediaType = 'document';
+              }
+              
+              messageData.content.fileName = file.originalname;
+              mediaIndex++;
+            } 
+            // Se não há arquivo mas há URL no content.media, usar a URL diretamente
+            else if (msg.content?.media) {
+              messageData.content.media = msg.content.media;
+              messageData.content.mediaType = msg.content.mediaType || (msg.type.includes('video') ? 'video' : msg.type.includes('image') ? 'image' : msg.type.includes('audio') ? 'audio' : 'document');
+              if (msg.content.fileName) {
+                messageData.content.fileName = msg.content.fileName;
+              }
             }
-            
-            messageData.content.fileName = file.originalname;
-            mediaIndex++;
           }
 
           return messageData;

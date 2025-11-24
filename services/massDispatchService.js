@@ -558,6 +558,14 @@ class MassDispatchService {
       const delay = messageData.delay;
       const content = message.content; // Usar o conteúdo processado
       
+      console.log(`📋 Processando mensagem ${order} do tipo "${type}" para ${number}`);
+      if (content?.media) {
+        console.log(`   📎 Mídia: ${content.media}`);
+        console.log(`   📎 Tipo de mídia: ${content.mediaType || 'não especificado'}`);
+      }
+      if (content?.caption) {
+        console.log(`   📝 Legenda: ${content.caption}`);
+      }
       
       // Validar se a mensagem tem os campos obrigatórios
       if (!order || !type) {
@@ -603,15 +611,27 @@ class MassDispatchService {
             break;
 
           case 'video':
+            console.log(`🎥 Enviando vídeo para ${number}:`, {
+              media: content.media,
+              mediaType: 'video',
+              fileName: content.fileName
+            });
             result = await evolutionApi.sendMedia(
               instanceName,
               number,
               content.media,
               'video'
             );
+            console.log(`✅ Vídeo enviado com sucesso:`, result?.key?.id || 'ID não disponível');
             break;
 
           case 'video_caption':
+            console.log(`🎥 Enviando vídeo com legenda para ${number}:`, {
+              media: content.media,
+              mediaType: 'video',
+              caption: content.caption,
+              fileName: content.fileName
+            });
             result = await evolutionApi.sendMedia(
               instanceName,
               number,
@@ -619,6 +639,7 @@ class MassDispatchService {
               'video',
               content.caption
             );
+            console.log(`✅ Vídeo com legenda enviado com sucesso:`, result?.key?.id || 'ID não disponível');
             break;
 
           case 'audio':
@@ -668,7 +689,11 @@ class MassDispatchService {
         }
 
       } catch (error) {
-        console.error(`❌ Erro ao enviar mensagem ${order} para ${number}:`, error.message);
+        console.error(`❌ Erro ao enviar mensagem ${order} (tipo: ${type}) para ${number}:`, error.message);
+        console.error(`   Detalhes do erro:`, error);
+        if (content?.media) {
+          console.error(`   URL de mídia: ${content.media}`);
+        }
         
         results.push({
           order: order,
