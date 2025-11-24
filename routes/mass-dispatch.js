@@ -35,22 +35,73 @@ const upload = multer({
       'application/xml',
       'text/plain',
       'image/jpeg',
+      'image/jpg',
       'image/png',
       'image/gif',
+      'image/webp',
+      'image/bmp',
       'audio/mpeg',
       'audio/mp3',
+      'audio/mp4',
       'audio/wav',
       'audio/ogg',
+      'audio/webm',
+      'audio/aac',
+      'audio/m4a',
+      'audio/x-m4a',
+      'video/mp4',
+      'video/x-m4v',
+      'video/quicktime',
+      'video/webm',
+      'application/mp4',
       'application/pdf',
       'application/msword',
-      'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'application/vnd.ms-excel',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'application/octet-stream' // Tipo genérico - será validado pela extensão
     ];
     
-    if (allowedMimes.includes(file.mimetype)) {
+    // Extensões permitidas (para fallback quando mimetype é genérico)
+    const allowedExtensions = [
+      '.csv', '.xml', '.txt',
+      '.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp',
+      '.mp3', '.wav', '.ogg', '.webm', '.aac', '.m4a',
+      '.mp4', '.pdf', '.doc', '.docx', '.xls', '.xlsx'
+    ];
+    
+    const fileExtension = path.extname(file.originalname).toLowerCase();
+    const mimetype = file.mimetype ? file.mimetype.toLowerCase() : '';
+    
+    // Log para debug
+    console.log(`📁 Validando arquivo: ${file.originalname}`);
+    console.log(`   - Extensão: ${fileExtension}`);
+    console.log(`   - MIME Type: ${mimetype || '(não fornecido)'}`);
+    
+    // Primeiro, verificar se a extensão é válida (prioridade para extensão)
+    if (allowedExtensions.includes(fileExtension)) {
+      // Se a extensão for válida, aceitar independente do mimetype
+      console.log(`✅ Arquivo aceito (extensão válida): ${file.originalname} (${fileExtension})`);
       cb(null, true);
-    } else {
-      cb(new Error('Tipo de arquivo não suportado'), false);
+      return;
     }
+    
+    // Se a extensão não for válida, verificar o mimetype
+    if (mimetype && allowedMimes.includes(mimetype)) {
+      // Se for application/octet-stream, ainda precisa validar pela extensão
+      if (mimetype === 'application/octet-stream') {
+        console.error(`❌ Arquivo rejeitado: ${file.originalname} - Tipo: ${mimetype}, Extensão: ${fileExtension} (octet-stream requer extensão válida)`);
+        cb(new Error(`Tipo de arquivo não suportado: ${fileExtension || mimetype}. Tipos permitidos: CSV, XML, TXT, imagens (JPG, PNG, GIF, WEBP), áudios (MP3, WAV, OGG, WEBM, M4A), vídeos (MP4) e documentos (PDF, DOC, DOCX, XLS, XLSX)`), false);
+        return;
+      }
+      console.log(`✅ Arquivo aceito: ${file.originalname} (${mimetype})`);
+      cb(null, true);
+      return;
+    }
+    
+    // Se nem extensão nem mimetype são válidos, rejeitar
+    console.error(`❌ Arquivo rejeitado: ${file.originalname} - Tipo: ${mimetype || '(não fornecido)'}, Extensão: ${fileExtension}`);
+    cb(new Error(`Tipo de arquivo não suportado: ${fileExtension || mimetype || 'desconhecido'}. Tipos permitidos: CSV, XML, TXT, imagens (JPG, PNG, GIF, WEBP), áudios (MP3, WAV, OGG, WEBM, M4A), vídeos (MP4) e documentos (PDF, DOC, DOCX, XLS, XLSX)`), false);
   }
 });
 

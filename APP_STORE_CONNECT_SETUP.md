@@ -95,7 +95,7 @@ Valida o receipt e atualiza o status do usuário no banco de dados.
   "message": "Assinatura validada e usuário atualizado com sucesso",
   "data": {
     "subscription": {
-      "productId": "com.br.clerky.clerky.mensal",
+      "productId": "com.br.clerky.clerky.premium.m1",
       "transactionId": "...",
       "expiresDate": "2025-12-22T00:00:00.000Z"
     },
@@ -135,7 +135,7 @@ npm install
 
 1. Acesse: App Store Connect > Seu App > **Features** > **In-App Purchases**
 2. Crie os produtos de assinatura necessários
-3. Configure os IDs dos produtos (ex: `com.br.clerky.clerky.mensal`)
+3. Configure os IDs dos produtos (ex: `com.br.clerky.clerky.premium.m1`)
 
 ### 3. Usar o Serviço no App
 
@@ -147,11 +147,11 @@ await inAppPurchaseService.initialize();
 
 // Buscar produtos
 const products = await inAppPurchaseService.getProducts([
-  'com.br.clerky.clerky.mensal'
+  'com.br.clerky.clerky.premium.m1'
 ]);
 
 // Comprar produto
-await inAppPurchaseService.purchaseProduct('com.br.clerky.clerky.mensal');
+await inAppPurchaseService.purchaseProduct('com.br.clerky.clerky.premium.m1');
 
 // Validar receipt no backend
 const receiptData = '...'; // Recebido após compra
@@ -187,4 +187,5 @@ const result = await inAppPurchaseService.verifyAndUpdateSubscription(receiptDat
 - [App Store Connect API](https://developer.apple.com/documentation/appstoreconnectapi)
 - [Receipt Validation](https://developer.apple.com/documentation/appstorereceipts)
 - [Expo In-App Purchases](https://docs.expo.dev/versions/latest/sdk/in-app-purchases/)
+
 
