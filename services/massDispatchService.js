@@ -4,6 +4,8 @@ const evolutionApi = require('./evolutionApi');
 const phoneService = require('./phoneService');
 const socketManager = require('../utils/socketManager');
 const templateUtils = require('../utils/templateUtils');
+const fs = require('fs');
+const path = require('path');
 
 class MassDispatchService {
   constructor() {
@@ -432,7 +434,7 @@ class MassDispatchService {
               dispatch.instanceName,
               number,
               processedTemplate.content.media,
-              'image'
+              processedTemplate.content.mediaType || 'image'
             );
             break;
 
@@ -441,7 +443,7 @@ class MassDispatchService {
               dispatch.instanceName,
               number,
               processedTemplate.content.media,
-              'image',
+              processedTemplate.content.mediaType || 'image',
               processedTemplate.content.caption
             );
             break;
@@ -569,7 +571,7 @@ class MassDispatchService {
               instanceName,
               number,
               content.media,
-              'image'
+              content.mediaType || 'image'
             );
             break;
 
@@ -578,7 +580,7 @@ class MassDispatchService {
               instanceName,
               number,
               content.media,
-              'image',
+              content.mediaType || 'image',
               content.caption
             );
             break;

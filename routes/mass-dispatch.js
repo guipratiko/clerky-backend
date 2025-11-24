@@ -25,7 +25,7 @@ const storage = multer.diskStorage({
 const upload = multer({ 
   storage: storage,
   limits: {
-    fileSize: 200 * 1024 * 1024 // 200MB
+    fileSize: 300 * 1024 * 1024 // 300MB
   },
   fileFilter: function (req, file, cb) {
     // Aceitar CSV, XML, TXT, imagens, áudios e documentos
@@ -122,7 +122,7 @@ const handleMulterError = (err, req, res, next) => {
       if (err.code === 'LIMIT_FILE_SIZE') {
       return res.status(400).json({
         success: false,
-        error: 'Arquivo muito grande. Tamanho máximo: 200MB'
+        error: 'Arquivo muito grande. Tamanho máximo: 300MB'
       });
     }
     if (err.code === 'LIMIT_UNEXPECTED_FILE') {
@@ -751,8 +751,18 @@ router.get('/templates/list', authenticateToken, blockTrialUsers, async (req, re
           if (['image', 'image_caption', 'audio', 'file', 'file_caption'].includes(msg.type) && mediaFiles[mediaIndex]) {
             const file = mediaFiles[mediaIndex];
             messageData.content.media = `${process.env.BASE_URL}/uploads/mass-dispatch/${file.filename}`;
-            messageData.content.mediaType = msg.type.includes('image') ? 'image' : 
-                                           msg.type.includes('audio') ? 'audio' : 'document';
+            
+            // Detectar tipo de mídia
+            if (msg.type.includes('image')) {
+              // Detectar se é vídeo MP4
+              const isVideo = file.mimetype?.includes('video') || file.originalname?.toLowerCase().endsWith('.mp4');
+              messageData.content.mediaType = isVideo ? 'video' : 'image';
+            } else if (msg.type.includes('audio')) {
+              messageData.content.mediaType = 'audio';
+            } else {
+              messageData.content.mediaType = 'document';
+            }
+            
             messageData.content.fileName = file.originalname;
             mediaIndex++;
           }
@@ -821,8 +831,10 @@ router.post('/templates', authenticateToken, blockTrialUsers, upload.single('med
             error: 'Arquivo de imagem é obrigatório'
           });
         }
+        // Detectar se é vídeo MP4
+        const isVideo = req.file.mimetype?.includes('video') || req.file.originalname?.toLowerCase().endsWith('.mp4');
         templateData.content.media = `${process.env.BASE_URL}/uploads/mass-dispatch/${req.file.filename}`;
-        templateData.content.mediaType = 'image';
+        templateData.content.mediaType = isVideo ? 'video' : 'image';
         break;
 
       case 'image_caption':
@@ -832,8 +844,10 @@ router.post('/templates', authenticateToken, blockTrialUsers, upload.single('med
             error: 'Arquivo de imagem e legenda são obrigatórios'
           });
         }
+        // Detectar se é vídeo MP4
+        const isVideoCaption = req.file.mimetype?.includes('video') || req.file.originalname?.toLowerCase().endsWith('.mp4');
         templateData.content.media = `${process.env.BASE_URL}/uploads/mass-dispatch/${req.file.filename}`;
-        templateData.content.mediaType = 'image';
+        templateData.content.mediaType = isVideoCaption ? 'video' : 'image';
         templateData.content.caption = caption;
         break;
 
@@ -1132,11 +1146,17 @@ router.put('/templates/:id', authenticateToken, blockTrialUsers, upload.array('m
             }
 
             updatedContent.media = `${process.env.BASE_URL}/uploads/mass-dispatch/${newFile.filename}`;
-            updatedContent.mediaType = template.type.includes('image')
-              ? 'image'
-              : template.type.includes('audio')
-                ? 'audio'
-                : 'document';
+            
+            // Detectar tipo de mídia
+            if (template.type.includes('image')) {
+              // Detectar se é vídeo MP4
+              const isVideo = newFile.mimetype?.includes('video') || newFile.originalname?.toLowerCase().endsWith('.mp4');
+              updatedContent.mediaType = isVideo ? 'video' : 'image';
+            } else if (template.type.includes('audio')) {
+              updatedContent.mediaType = 'audio';
+            } else {
+              updatedContent.mediaType = 'document';
+            }
 
             if (['audio', 'file', 'file_caption'].includes(template.type)) {
               updatedContent.fileName = req.body.fileName || newFile.originalname;
