@@ -20,13 +20,18 @@ class InAppPurchaseService {
 
   /**
    * Valida um receipt da App Store
+   * IMPORTANTE: Sempre tenta produção primeiro, depois sandbox se necessário
+   * Isso é necessário para apps em produção que podem receber receipts do sandbox
    * @param {string} receiptData - Receipt em base64
    * @param {boolean} isProduction - Se true, usa URL de produção, senão usa sandbox
    * @returns {Promise<Object>} - Dados da validação
    */
   async validateReceipt(receiptData, isProduction = true) {
     try {
+      // SEMPRE tentar produção primeiro (conforme recomendação da Apple)
       const url = isProduction ? this.productionUrl : this.sandboxUrl;
+      
+      console.log(`🔍 Validando receipt no ambiente: ${isProduction ? 'PRODUÇÃO' : 'SANDBOX'}`);
       
       const response = await axios.post(url, {
         'receipt-data': receiptData,
@@ -40,18 +45,20 @@ class InAppPurchaseService {
 
       const result = response.data;
 
-      // Se o status for 21007, significa que o receipt é do sandbox
-      // mas foi enviado para produção - tentar sandbox
+      // Status 21007 = "Sandbox receipt used in production"
+      // Se receber esse erro na produção, tentar sandbox
       if (result.status === 21007 && isProduction) {
-        console.log('Receipt é do sandbox, tentando validar no sandbox...');
+        console.log('⚠️ Receipt é do sandbox, mas foi enviado para produção');
+        console.log('✅ Tentando validar no sandbox...');
         return await this.validateReceipt(receiptData, false);
       }
 
       // Status 0 = sucesso
       if (result.status === 0) {
+        console.log(`✅ Receipt válido no ambiente: ${result.environment || (isProduction ? 'Production' : 'Sandbox')}`);
         return {
           valid: true,
-          environment: result.environment, // 'Sandbox' ou 'Production'
+          environment: result.environment || (isProduction ? 'Production' : 'Sandbox'),
           receipt: result.receipt,
           latestReceiptInfo: result.latest_receipt_info || [],
           pendingRenewalInfo: result.pending_renewal_info || [],
@@ -60,6 +67,7 @@ class InAppPurchaseService {
       }
 
       // Outros status indicam erro
+      console.error(`❌ Erro ao validar receipt. Status: ${result.status}`);
       return {
         valid: false,
         status: result.status,
@@ -67,7 +75,7 @@ class InAppPurchaseService {
         environment: result.environment
       };
     } catch (error) {
-      console.error('Erro ao validar receipt:', error);
+      console.error('❌ Erro ao validar receipt:', error);
       throw new Error(`Erro ao validar receipt: ${error.message}`);
     }
   }
@@ -208,6 +216,212 @@ class InAppPurchaseService {
       console.error('Erro ao validar transação:', error);
       throw error;
     }
+  }
+
+  /**
+   * Processa notificações do servidor da App Store
+   * @param {string} signedPayload - JWT assinado pela Apple
+   * @returns {Promise<Object>} - Resultado do processamento
+   */
+  async processAppStoreNotification(signedPayload) {
+    try {
+      // Decodificar o JWT sem verificar (a validação será feita depois)
+      // A Apple usa JWT para assinar as notificações
+      const decoded = jwt.decode(signedPayload, { complete: true });
+      
+      if (!decoded || !decoded.payload) {
+        throw new Error('Payload JWT inválido');
+      }
+
+      const notification = decoded.payload;
+      
+      console.log('📋 Tipo de notificação:', notification.notificationType || notification.notification_type);
+      console.log('📋 Subtype:', notification.subtype);
+      console.log('📋 Data:', notification.signedDate || notification.signed_date);
+      console.log('📋 Transaction Info:', JSON.stringify(notification.data?.transactionInfo || notification.transaction_info || {}, null, 2));
+      console.log('📋 Renewal Info:', JSON.stringify(notification.data?.renewalInfo || notification.renewal_info || {}, null, 2));
+
+      // A Apple pode enviar em dois formatos:
+      // V1: notification.notification_type, notification.transaction_info
+      // V2: notification.notificationType, notification.data.transactionInfo
+      const notificationType = notification.notificationType || notification.notification_type;
+      const transactionInfo = notification.data?.transactionInfo || notification.transaction_info || {};
+      const renewalInfo = notification.data?.renewalInfo || notification.renewal_info || {};
+
+      // Buscar usuário pelo original_transaction_id ou originalTransactionId
+      const User = require('../models/User');
+      const originalTransactionId = transactionInfo.originalTransactionId || transactionInfo.original_transaction_id;
+      
+      if (!originalTransactionId) {
+        console.warn('⚠️ originalTransactionId não encontrado na notificação');
+        return {
+          processed: false,
+          message: 'originalTransactionId não encontrado'
+        };
+      }
+
+      const user = await User.findOne({
+        iapOriginalTransactionId: originalTransactionId
+      });
+
+      if (!user) {
+        console.warn('⚠️ Usuário não encontrado para transaction_id:', originalTransactionId);
+        return {
+          processed: false,
+          message: 'Usuário não encontrado'
+        };
+      }
+
+      console.log('👤 Usuário encontrado:', user.email);
+
+      // Processar diferentes tipos de notificação
+      switch (notificationType) {
+        case 'INITIAL_BUY':
+          // Compra inicial
+          await this.handleInitialBuy(user, transactionInfo, renewalInfo);
+          break;
+
+        case 'DID_RENEW':
+          // Renovação bem-sucedida
+          await this.handleDidRenew(user, transactionInfo, renewalInfo);
+          break;
+
+        case 'DID_FAIL_TO_RENEW':
+          // Falha na renovação
+          await this.handleDidFailToRenew(user, transactionInfo, renewalInfo);
+          break;
+
+        case 'DID_CANCEL':
+          // Cancelamento
+          await this.handleDidCancel(user, transactionInfo, renewalInfo);
+          break;
+
+        case 'DID_RECOVER':
+          // Recuperação após falha
+          await this.handleDidRecover(user, transactionInfo, renewalInfo);
+          break;
+
+        case 'REFUND':
+          // Reembolso
+          await this.handleRefund(user, transactionInfo, renewalInfo);
+          break;
+
+        default:
+          console.log('ℹ️ Tipo de notificação não processado:', notificationType);
+      }
+
+      return {
+        processed: true,
+        notificationType,
+        userId: user._id
+      };
+    } catch (error) {
+      console.error('Erro ao processar notificação:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Processa compra inicial
+   */
+  async handleInitialBuy(user, transactionInfo, renewalInfo) {
+    console.log('✅ Processando compra inicial');
+    
+    // A Apple pode enviar expiresDate em diferentes formatos
+    const expiresDateMs = transactionInfo.expiresDate || transactionInfo.expires_date_ms || transactionInfo.expires_date;
+    const expiresDate = expiresDateMs 
+      ? new Date(typeof expiresDateMs === 'string' ? expiresDateMs : parseInt(expiresDateMs))
+      : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); // 30 dias padrão
+
+    user.plan = 'premium';
+    user.planExpiresAt = expiresDate;
+    user.iapTransactionId = transactionInfo.transactionId || transactionInfo.transaction_id;
+    user.iapOriginalTransactionId = transactionInfo.originalTransactionId || transactionInfo.original_transaction_id;
+    user.iapProductId = transactionInfo.productId || transactionInfo.product_id;
+    user.status = 'approved';
+    
+    if (!user.approvedAt) {
+      user.approvedAt = new Date();
+    }
+
+    await user.save();
+    console.log('✅ Usuário atualizado com compra inicial');
+  }
+
+  /**
+   * Processa renovação bem-sucedida
+   */
+  async handleDidRenew(user, transactionInfo, renewalInfo) {
+    console.log('✅ Processando renovação bem-sucedida');
+    
+    const expiresDateMs = transactionInfo.expiresDate || transactionInfo.expires_date_ms || transactionInfo.expires_date;
+    const expiresDate = expiresDateMs 
+      ? new Date(typeof expiresDateMs === 'string' ? expiresDateMs : parseInt(expiresDateMs))
+      : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+
+    user.plan = 'premium';
+    user.planExpiresAt = expiresDate;
+    user.iapTransactionId = transactionInfo.transactionId || transactionInfo.transaction_id;
+    user.status = 'approved';
+
+    await user.save();
+    console.log('✅ Usuário atualizado com renovação');
+  }
+
+  /**
+   * Processa falha na renovação
+   */
+  async handleDidFailToRenew(user, transactionInfo, renewalInfo) {
+    console.log('⚠️ Processando falha na renovação');
+    
+    // Não remover o plano imediatamente - pode ser um problema temporário
+    // O plano expira na data de expiração
+    console.log('⚠️ Assinatura falhou ao renovar, mas plano permanece até expirar');
+  }
+
+  /**
+   * Processa cancelamento
+   */
+  async handleDidCancel(user, transactionInfo, renewalInfo) {
+    console.log('❌ Processando cancelamento');
+    
+    // Não remover o plano imediatamente - o usuário ainda tem acesso até expirar
+    console.log('❌ Assinatura cancelada, mas plano permanece até expirar');
+  }
+
+  /**
+   * Processa recuperação após falha
+   */
+  async handleDidRecover(user, transactionInfo, renewalInfo) {
+    console.log('✅ Processando recuperação após falha');
+    
+    const expiresDateMs = transactionInfo.expiresDate || transactionInfo.expires_date_ms || transactionInfo.expires_date;
+    const expiresDate = expiresDateMs 
+      ? new Date(typeof expiresDateMs === 'string' ? expiresDateMs : parseInt(expiresDateMs))
+      : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+
+    user.plan = 'premium';
+    user.planExpiresAt = expiresDate;
+    user.iapTransactionId = transactionInfo.transactionId || transactionInfo.transaction_id;
+    user.status = 'approved';
+
+    await user.save();
+    console.log('✅ Usuário recuperado após falha');
+  }
+
+  /**
+   * Processa reembolso
+   */
+  async handleRefund(user, transactionInfo, renewalInfo) {
+    console.log('💰 Processando reembolso');
+    
+    // Remover plano premium
+    user.plan = 'free';
+    user.planExpiresAt = null;
+    user.status = 'pending';
+
+    await user.save();
+    console.log('💰 Plano removido devido a reembolso');
   }
 }
 

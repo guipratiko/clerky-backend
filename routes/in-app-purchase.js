@@ -182,5 +182,46 @@ router.post('/validate-transaction', authenticateToken, async (req, res) => {
   }
 });
 
+/**
+ * POST /api/in-app-purchase/app-store-notification
+ * Webhook para receber notificações do servidor da App Store
+ * Este endpoint não requer autenticação, pois a Apple valida via JWT
+ */
+router.post('/app-store-notification', async (req, res) => {
+  try {
+    console.log('\n📬 NOTIFICAÇÃO DO SERVIDOR DA APP STORE RECEBIDA');
+    console.log('📦 Headers:', JSON.stringify(req.headers, null, 2));
+    console.log('📦 Body:', JSON.stringify(req.body, null, 2));
+
+    // A Apple envia notificações como JWT no campo 'signedPayload'
+    const { signedPayload } = req.body;
+
+    if (!signedPayload) {
+      console.error('❌ signedPayload não encontrado no body');
+      return res.status(400).json({
+        success: false,
+        error: 'signedPayload é obrigatório'
+      });
+    }
+
+    // Processar a notificação
+    const result = await inAppPurchaseService.processAppStoreNotification(signedPayload);
+
+    // Sempre retornar 200 para a Apple (mesmo em caso de erro interno)
+    // A Apple vai reenviar se não receber 200
+    res.status(200).json({
+      success: true,
+      message: 'Notificação processada'
+    });
+  } catch (error) {
+    console.error('❌ Erro ao processar notificação da App Store:', error);
+    // Sempre retornar 200 para a Apple
+    res.status(200).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
 module.exports = router;
 

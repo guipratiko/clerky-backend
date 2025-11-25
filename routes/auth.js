@@ -371,6 +371,10 @@ router.get('/me', authenticateToken, (req, res) => {
         plan: req.user.plan || 'free',
         planExpiresAt: req.user.planExpiresAt || null,
         isPasswordSet: req.user.isPasswordSet || false,
+        // Campos de In-App Purchase
+        iapTransactionId: req.user.iapTransactionId || null,
+        iapOriginalTransactionId: req.user.iapOriginalTransactionId || null,
+        iapProductId: req.user.iapProductId || null,
         createdAt: req.user.createdAt,
         updatedAt: req.user.updatedAt
       }
