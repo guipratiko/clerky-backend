@@ -251,6 +251,7 @@ class InAppPurchaseService {
       // Buscar usuário pelo original_transaction_id ou originalTransactionId
       const User = require('../models/User');
       const originalTransactionId = transactionInfo.originalTransactionId || transactionInfo.original_transaction_id;
+      const transactionId = transactionInfo.transactionId || transactionInfo.transaction_id;
       
       if (!originalTransactionId) {
         console.warn('⚠️ originalTransactionId não encontrado na notificação');
@@ -260,12 +261,47 @@ class InAppPurchaseService {
         };
       }
 
-      const user = await User.findOne({
+      // Tentar encontrar usuário pelo originalTransactionId
+      let user = await User.findOne({
         iapOriginalTransactionId: originalTransactionId
       });
 
+      // Se não encontrou e é INITIAL_BUY, tentar outras formas
+      if (!user && notificationType === 'INITIAL_BUY') {
+        console.log('🔍 INITIAL_BUY: Usuário não encontrado pelo originalTransactionId, tentando outras formas...');
+        
+        // Tentar buscar pelo transactionId (caso o app tenha salvo temporariamente)
+        if (transactionId) {
+          console.log('🔍 Tentando buscar pelo transactionId:', transactionId);
+          user = await User.findOne({
+            iapTransactionId: transactionId
+          });
+        }
+        
+        // Se ainda não encontrou, aguardar 2 segundos e tentar novamente
+        // (para dar tempo do app salvar o originalTransactionId)
+        if (!user) {
+          console.log('⏳ Aguardando 2 segundos para o app processar a compra...');
+          await new Promise(resolve => setTimeout(resolve, 2000));
+          
+          // Tentar novamente pelo originalTransactionId
+          user = await User.findOne({
+            iapOriginalTransactionId: originalTransactionId
+          });
+          
+          // Se ainda não encontrou, tentar pelo transactionId novamente
+          if (!user && transactionId) {
+            user = await User.findOne({
+              iapTransactionId: transactionId
+            });
+          }
+        }
+      }
+
       if (!user) {
         console.warn('⚠️ Usuário não encontrado para transaction_id:', originalTransactionId);
+        console.warn('   Tentou também transactionId:', transactionId);
+        console.warn('   Tipo de notificação:', notificationType);
         return {
           processed: false,
           message: 'Usuário não encontrado'
