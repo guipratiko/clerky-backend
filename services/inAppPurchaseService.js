@@ -335,9 +335,9 @@ class InAppPurchaseService {
         iapOriginalTransactionId: originalTransactionId
       });
 
-      // Se não encontrou e é INITIAL_BUY, tentar outras formas
-      if (!user && effectiveNotificationType === 'INITIAL_BUY') {
-        console.log('🔍 INITIAL_BUY: Usuário não encontrado pelo originalTransactionId, tentando outras formas...');
+      // Se não encontrou, tentar outras formas dependendo do tipo de notificação
+      if (!user) {
+        console.log(`🔍 ${effectiveNotificationType}: Usuário não encontrado pelo originalTransactionId, tentando outras formas...`);
         
         // Tentar buscar pelo transactionId (caso o app tenha salvo temporariamente)
         if (transactionId) {
@@ -347,9 +347,20 @@ class InAppPurchaseService {
           });
         }
         
-        // Se ainda não encontrou, aguardar 2 segundos e tentar novamente
+        // Tentar buscar pelo appTransactionId (se disponível)
+        const appTransactionId = transactionInfo.appTransactionId;
+        if (!user && appTransactionId) {
+          console.log('🔍 Tentando buscar pelo appTransactionId:', appTransactionId);
+          // O appTransactionId pode estar em diferentes campos, vamos tentar buscar usuários premium com o mesmo productId
+          user = await User.findOne({
+            plan: 'premium',
+            iapProductId: transactionInfo.productId || transactionInfo.product_id
+          });
+        }
+        
+        // Para INITIAL_BUY, aguardar 2 segundos e tentar novamente
         // (para dar tempo do app salvar o originalTransactionId)
-        if (!user) {
+        if (!user && effectiveNotificationType === 'INITIAL_BUY') {
           console.log('⏳ Aguardando 2 segundos para o app processar a compra...');
           await new Promise(resolve => setTimeout(resolve, 2000));
           
@@ -365,12 +376,39 @@ class InAppPurchaseService {
             });
           }
         }
+        
+        // Para DID_RENEW, tentar buscar pelo productId e plano premium
+        // (última tentativa - pode retornar múltiplos usuários, então pegamos o mais recente)
+        if (!user && effectiveNotificationType === 'DID_RENEW') {
+          console.log('🔍 DID_RENEW: Tentando buscar pelo productId e plano premium...');
+          const productId = transactionInfo.productId || transactionInfo.product_id;
+          if (productId) {
+            // Buscar usuários premium com o mesmo productId, ordenados por updatedAt (mais recente primeiro)
+            const users = await User.find({
+              plan: 'premium',
+              iapProductId: productId
+            }).sort({ updatedAt: -1 }).limit(1);
+            
+            if (users && users.length > 0) {
+              user = users[0];
+              console.log('✅ Usuário encontrado pelo productId (mais recente):', user.email);
+              // Atualizar o originalTransactionId para futuras renovações
+              if (!user.iapOriginalTransactionId) {
+                user.iapOriginalTransactionId = originalTransactionId;
+                await user.save();
+                console.log('✅ originalTransactionId atualizado para futuras renovações');
+              }
+            }
+          }
+        }
       }
 
       if (!user) {
         console.warn('⚠️ Usuário não encontrado para transaction_id:', originalTransactionId);
         console.warn('   Tentou também transactionId:', transactionId);
-        console.warn('   Tipo de notificação:', notificationType);
+        console.warn('   Tentou também appTransactionId:', transactionInfo.appTransactionId);
+        console.warn('   Tipo de notificação:', effectiveNotificationType);
+        console.warn('   ProductId:', transactionInfo.productId || transactionInfo.product_id);
         return {
           processed: false,
           message: 'Usuário não encontrado'
@@ -469,7 +507,21 @@ class InAppPurchaseService {
     user.plan = 'premium';
     user.planExpiresAt = expiresDate;
     user.iapTransactionId = transactionInfo.transactionId || transactionInfo.transaction_id;
+    
+    // Garantir que o originalTransactionId esteja salvo (importante para futuras renovações)
+    if (!user.iapOriginalTransactionId) {
+      user.iapOriginalTransactionId = transactionInfo.originalTransactionId || transactionInfo.original_transaction_id;
+      console.log('✅ originalTransactionId salvo durante renovação:', user.iapOriginalTransactionId);
+    }
+    
+    // Garantir que o productId esteja salvo
+    if (!user.iapProductId) {
+      user.iapProductId = transactionInfo.productId || transactionInfo.product_id;
+      console.log('✅ productId salvo durante renovação:', user.iapProductId);
+    }
+    
     user.status = 'approved';
+    user.isInTrial = false; // Garantir que não está em trial
 
     await user.save();
     console.log('✅ Usuário atualizado com renovação');

@@ -102,6 +102,16 @@ router.post('/verify-and-update', authenticateToken, async (req, res) => {
 
     const subscription = subscriptionStatus.subscription;
     
+    // ✅ IMPORTANTE: Salvar o originalTransactionId IMEDIATAMENTE
+    // Isso garante que o webhook da Apple possa encontrar o usuário mesmo se chegar antes
+    // do processamento completo da compra
+    if (subscription.originalTransactionId && !user.iapOriginalTransactionId) {
+      console.log('🔐 Salvando originalTransactionId imediatamente para identificação do webhook...');
+      user.iapOriginalTransactionId = subscription.originalTransactionId;
+      await user.save();
+      console.log('✅ originalTransactionId salvo:', subscription.originalTransactionId);
+    }
+    
     console.log('📦 Dados da assinatura recebidos:', JSON.stringify(subscription, null, 2));
     console.log('👤 Usuário antes da atualização:', {
       email: user.email,
@@ -163,6 +173,68 @@ router.post('/verify-and-update', authenticateToken, async (req, res) => {
     });
   } catch (error) {
     console.error('Erro ao verificar e atualizar assinatura:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+/**
+ * POST /api/in-app-purchase/save-transaction-id
+ * Salva o originalTransactionId assim que a compra é confirmada
+ * Isso garante que o webhook da Apple possa encontrar o usuário
+ * mesmo se chegar antes da validação completa
+ */
+router.post('/save-transaction-id', authenticateToken, async (req, res) => {
+  try {
+    const { originalTransactionId, transactionId, productId } = req.body;
+    const userId = req.user._id;
+
+    if (!originalTransactionId) {
+      return res.status(400).json({
+        success: false,
+        error: 'originalTransactionId é obrigatório'
+      });
+    }
+
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        error: 'Usuário não encontrado'
+      });
+    }
+
+    // Salvar o originalTransactionId imediatamente
+    // Isso permite que o webhook encontre o usuário mesmo antes da validação completa
+    if (!user.iapOriginalTransactionId) {
+      user.iapOriginalTransactionId = originalTransactionId;
+      console.log('🔐 Salvando originalTransactionId para identificação do webhook:', originalTransactionId);
+    }
+
+    // Salvar transactionId e productId se fornecidos
+    if (transactionId && !user.iapTransactionId) {
+      user.iapTransactionId = transactionId;
+    }
+
+    if (productId && !user.iapProductId) {
+      user.iapProductId = productId;
+    }
+
+    await user.save();
+
+    console.log('✅ originalTransactionId salvo com sucesso para usuário:', user.email);
+
+    res.json({
+      success: true,
+      message: 'Transaction ID salvo com sucesso',
+      data: {
+        originalTransactionId: user.iapOriginalTransactionId
+      }
+    });
+  } catch (error) {
+    console.error('Erro ao salvar transaction ID:', error);
     res.status(500).json({
       success: false,
       error: error.message
