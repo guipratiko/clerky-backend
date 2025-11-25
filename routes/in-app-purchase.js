@@ -131,6 +131,7 @@ router.post('/verify-and-update', authenticateToken, async (req, res) => {
     user.iapProductId = subscription.productId;
     user.iapReceiptData = receiptData; // Armazenar o receipt para validações futuras
     user.status = 'approved';
+    user.isInTrial = false; // Usuário não está mais em trial, tem assinatura paga
     
     if (!user.approvedAt) {
       user.approvedAt = new Date();

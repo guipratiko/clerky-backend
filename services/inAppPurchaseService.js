@@ -445,6 +445,7 @@ class InAppPurchaseService {
     user.iapOriginalTransactionId = transactionInfo.originalTransactionId || transactionInfo.original_transaction_id;
     user.iapProductId = transactionInfo.productId || transactionInfo.product_id;
     user.status = 'approved';
+    user.isInTrial = false; // Usuário não está mais em trial, tem assinatura paga
     
     if (!user.approvedAt) {
       user.approvedAt = new Date();
