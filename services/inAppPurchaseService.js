@@ -235,26 +235,95 @@ class InAppPurchaseService {
 
       const notification = decoded.payload;
       
+      // Log completo do payload para debug
+      console.log('📦 Payload completo:', JSON.stringify(notification, null, 2));
+      
       console.log('📋 Tipo de notificação:', notification.notificationType || notification.notification_type);
       console.log('📋 Subtype:', notification.subtype);
       console.log('📋 Data:', notification.signedDate || notification.signed_date);
-      console.log('📋 Transaction Info:', JSON.stringify(notification.data?.transactionInfo || notification.transaction_info || {}, null, 2));
-      console.log('📋 Renewal Info:', JSON.stringify(notification.data?.renewalInfo || notification.renewal_info || {}, null, 2));
+      
+      // A Apple envia em formato V2 (App Store Server Notifications V2)
+      // A estrutura é: notification.data.signedTransactionInfo (JWT) e notification.data.signedRenewalInfo (JWT)
+      // Precisamos decodificar esses JWTs também para obter as informações da transação
+      
+      let transactionInfo = {};
+      let renewalInfo = {};
+      
+      // Tentar diferentes formatos
+      if (notification.data) {
+        // Formato V2: signedTransactionInfo e signedRenewalInfo são JWTs
+        if (notification.data.signedTransactionInfo) {
+          try {
+            const transactionDecoded = jwt.decode(notification.data.signedTransactionInfo, { complete: true });
+            transactionInfo = transactionDecoded?.payload || {};
+            console.log('✅ Transaction Info decodificado do JWT:', JSON.stringify(transactionInfo, null, 2));
+          } catch (e) {
+            console.error('❌ Erro ao decodificar signedTransactionInfo:', e);
+          }
+        }
+        
+        // Formato V2: signedRenewalInfo também é um JWT
+        if (notification.data.signedRenewalInfo) {
+          try {
+            const renewalDecoded = jwt.decode(notification.data.signedRenewalInfo, { complete: true });
+            renewalInfo = renewalDecoded?.payload || {};
+            console.log('✅ Renewal Info decodificado do JWT:', JSON.stringify(renewalInfo, null, 2));
+          } catch (e) {
+            console.error('❌ Erro ao decodificar signedRenewalInfo:', e);
+          }
+        }
+        
+        // Fallback: tentar formato direto (V1 ou formato alternativo)
+        if (Object.keys(transactionInfo).length === 0) {
+          transactionInfo = notification.data.transactionInfo || notification.data.transaction_info || {};
+        }
+        if (Object.keys(renewalInfo).length === 0) {
+          renewalInfo = notification.data.renewalInfo || notification.data.renewal_info || {};
+        }
+      }
+      
+      // Fallback final: tentar formato V1
+      if (Object.keys(transactionInfo).length === 0) {
+        transactionInfo = notification.transaction_info || {};
+      }
+      if (Object.keys(renewalInfo).length === 0) {
+        renewalInfo = notification.renewal_info || {};
+      }
+      
+      console.log('📋 Transaction Info final:', JSON.stringify(transactionInfo, null, 2));
+      console.log('📋 Renewal Info final:', JSON.stringify(renewalInfo, null, 2));
 
       // A Apple pode enviar em dois formatos:
       // V1: notification.notification_type, notification.transaction_info
-      // V2: notification.notificationType, notification.data.transactionInfo
+      // V2: notification.notificationType, notification.data.signedTransactionInfo (JWT)
       const notificationType = notification.notificationType || notification.notification_type;
-      const transactionInfo = notification.data?.transactionInfo || notification.transaction_info || {};
-      const renewalInfo = notification.data?.renewalInfo || notification.renewal_info || {};
+      const subtype = notification.subtype;
+      
+      // Determinar o tipo real de notificação
+      // SUBSCRIBED com subtype INITIAL_BUY = compra inicial
+      // SUBSCRIBED com subtype DID_RENEW = renovação
+      let effectiveNotificationType = notificationType;
+      if (notificationType === 'SUBSCRIBED' && subtype) {
+        if (subtype === 'INITIAL_BUY') {
+          effectiveNotificationType = 'INITIAL_BUY';
+        } else if (subtype === 'DID_RENEW') {
+          effectiveNotificationType = 'DID_RENEW';
+        }
+      }
+      
+      console.log('📋 Tipo efetivo de notificação:', effectiveNotificationType);
 
       // Buscar usuário pelo original_transaction_id ou originalTransactionId
       const User = require('../models/User');
       const originalTransactionId = transactionInfo.originalTransactionId || transactionInfo.original_transaction_id;
       const transactionId = transactionInfo.transactionId || transactionInfo.transaction_id;
       
+      console.log('🔍 Buscando originalTransactionId:', originalTransactionId);
+      console.log('🔍 Buscando transactionId:', transactionId);
+      
       if (!originalTransactionId) {
         console.warn('⚠️ originalTransactionId não encontrado na notificação');
+        console.warn('⚠️ TransactionInfo completo:', JSON.stringify(transactionInfo, null, 2));
         return {
           processed: false,
           message: 'originalTransactionId não encontrado'
@@ -267,7 +336,7 @@ class InAppPurchaseService {
       });
 
       // Se não encontrou e é INITIAL_BUY, tentar outras formas
-      if (!user && notificationType === 'INITIAL_BUY') {
+      if (!user && effectiveNotificationType === 'INITIAL_BUY') {
         console.log('🔍 INITIAL_BUY: Usuário não encontrado pelo originalTransactionId, tentando outras formas...');
         
         // Tentar buscar pelo transactionId (caso o app tenha salvo temporariamente)
@@ -311,8 +380,9 @@ class InAppPurchaseService {
       console.log('👤 Usuário encontrado:', user.email);
 
       // Processar diferentes tipos de notificação
-      switch (notificationType) {
+      switch (effectiveNotificationType) {
         case 'INITIAL_BUY':
+        case 'SUBSCRIBED': // Fallback para SUBSCRIBED sem subtype
           // Compra inicial
           await this.handleInitialBuy(user, transactionInfo, renewalInfo);
           break;
@@ -348,7 +418,7 @@ class InAppPurchaseService {
 
       return {
         processed: true,
-        notificationType,
+        notificationType: effectiveNotificationType,
         userId: user._id
       };
     } catch (error) {

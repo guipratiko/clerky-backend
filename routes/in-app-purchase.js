@@ -102,6 +102,13 @@ router.post('/verify-and-update', authenticateToken, async (req, res) => {
 
     const subscription = subscriptionStatus.subscription;
     
+    console.log('📦 Dados da assinatura recebidos:', JSON.stringify(subscription, null, 2));
+    console.log('👤 Usuário antes da atualização:', {
+      email: user.email,
+      plan: user.plan,
+      iapOriginalTransactionId: user.iapOriginalTransactionId
+    });
+    
     // Lógica igual ao AppMax: se já tem plano válido, somar 1 mês a partir da data de vencimento
     // Caso contrário, usar a data de expiração da assinatura
     const now = new Date();
@@ -129,7 +136,17 @@ router.post('/verify-and-update', authenticateToken, async (req, res) => {
       user.approvedAt = new Date();
     }
 
+    console.log('💾 Salvando usuário com dados:', {
+      plan: user.plan,
+      iapTransactionId: user.iapTransactionId,
+      iapOriginalTransactionId: user.iapOriginalTransactionId,
+      iapProductId: user.iapProductId,
+      planExpiresAt: user.planExpiresAt
+    });
+
     await user.save();
+    
+    console.log('✅ Usuário salvo com sucesso!');
 
     res.json({
       success: true,
