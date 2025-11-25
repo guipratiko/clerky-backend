@@ -157,7 +157,15 @@ router.post('/app-store-notification', async (req, res) => {
   try {
     console.log('📬 [WEBHOOK] Notificação recebida da Apple');
     
-    const result = await inAppPurchaseService.processAppStoreNotification(req.body);
+    // ✅ Apple envia { signedPayload: "JWT_STRING" }
+    const { signedPayload } = req.body;
+    
+    if (!signedPayload) {
+      console.error('❌ [WEBHOOK] signedPayload não encontrado no body');
+      return res.status(400).json({ received: false, error: 'signedPayload ausente' });
+    }
+    
+    const result = await inAppPurchaseService.processAppStoreNotification(signedPayload);
     
     if (result.processed) {
       console.log('✅ [WEBHOOK] Notificação processada');
