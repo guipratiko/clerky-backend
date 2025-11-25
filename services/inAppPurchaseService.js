@@ -377,10 +377,10 @@ class InAppPurchaseService {
           }
         }
         
-        // Para DID_RENEW, tentar buscar pelo productId e plano premium
+        // Para DID_RENEW e EXPIRED, tentar buscar pelo productId e plano premium
         // (última tentativa - pode retornar múltiplos usuários, então pegamos o mais recente)
-        if (!user && effectiveNotificationType === 'DID_RENEW') {
-          console.log('🔍 DID_RENEW: Tentando buscar pelo productId e plano premium...');
+        if (!user && (effectiveNotificationType === 'DID_RENEW' || effectiveNotificationType === 'EXPIRED')) {
+          console.log(`🔍 ${effectiveNotificationType}: Tentando buscar pelo productId e plano premium...`);
           const productId = transactionInfo.productId || transactionInfo.product_id;
           if (productId) {
             // Buscar usuários premium com o mesmo productId, ordenados por updatedAt (mais recente primeiro)
@@ -392,11 +392,11 @@ class InAppPurchaseService {
             if (users && users.length > 0) {
               user = users[0];
               console.log('✅ Usuário encontrado pelo productId (mais recente):', user.email);
-              // Atualizar o originalTransactionId para futuras renovações
+              // Atualizar o originalTransactionId para futuras notificações
               if (!user.iapOriginalTransactionId) {
                 user.iapOriginalTransactionId = originalTransactionId;
                 await user.save();
-                console.log('✅ originalTransactionId atualizado para futuras renovações');
+                console.log('✅ originalTransactionId atualizado para futuras notificações');
               }
             }
           }
@@ -450,8 +450,13 @@ class InAppPurchaseService {
           await this.handleRefund(user, transactionInfo, renewalInfo);
           break;
 
+        case 'EXPIRED':
+          // Assinatura expirada (cancelamento voluntário ou não renovada)
+          await this.handleExpired(user, transactionInfo, renewalInfo);
+          break;
+
         default:
-          console.log('ℹ️ Tipo de notificação não processado:', notificationType);
+          console.log('ℹ️ Tipo de notificação não processado:', effectiveNotificationType);
       }
 
       return {
@@ -581,6 +586,36 @@ class InAppPurchaseService {
 
     await user.save();
     console.log('💰 Plano removido devido a reembolso');
+  }
+
+  /**
+   * Processa assinatura expirada
+   */
+  async handleExpired(user, transactionInfo, renewalInfo) {
+    console.log('⏰ Processando assinatura expirada');
+    
+    // Verificar se a assinatura realmente expirou
+    const expiresDateMs = transactionInfo.expiresDate || transactionInfo.expires_date_ms || transactionInfo.expires_date;
+    const expiresDate = expiresDateMs 
+      ? new Date(typeof expiresDateMs === 'string' ? expiresDateMs : parseInt(expiresDateMs))
+      : null;
+    
+    const now = new Date();
+    
+    // Se a data de expiração já passou, remover plano premium
+    if (expiresDate && expiresDate < now) {
+      console.log('⏰ Assinatura expirada em:', expiresDate);
+      user.plan = 'free';
+      user.planExpiresAt = expiresDate; // Manter a data de expiração para referência
+      
+      // Não alterar status para 'pending' se já estava aprovado
+      // Apenas remover o plano premium
+      
+      await user.save();
+      console.log('⏰ Plano removido devido a expiração da assinatura');
+    } else {
+      console.log('ℹ️ Notificação de expiração recebida, mas a assinatura ainda não expirou');
+    }
   }
 }
 

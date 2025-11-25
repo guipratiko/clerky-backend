@@ -1,317 +1,176 @@
 const express = require('express');
 const router = express.Router();
+const User = require('../models/User');
 const inAppPurchaseService = require('../services/inAppPurchaseService');
 const { authenticateToken } = require('../middleware/auth');
-const User = require('../models/User');
 
 /**
- * POST /api/in-app-purchase/validate
- * Valida um receipt da App Store
- */
-router.post('/validate', authenticateToken, async (req, res) => {
-  try {
-    const { receiptData } = req.body;
-
-    if (!receiptData) {
-      return res.status(400).json({
-        success: false,
-        error: 'receiptData é obrigatório'
-      });
-    }
-
-    const validation = await inAppPurchaseService.validateReceipt(receiptData);
-
-    res.json({
-      success: true,
-      data: validation
-    });
-  } catch (error) {
-    console.error('Erro ao validar receipt:', error);
-    res.status(500).json({
-      success: false,
-      error: error.message
-    });
-  }
-});
-
-/**
- * POST /api/in-app-purchase/check-subscription
- * Verifica o status de uma assinatura
- */
-router.post('/check-subscription', authenticateToken, async (req, res) => {
-  try {
-    const { receiptData } = req.body;
-
-    if (!receiptData) {
-      return res.status(400).json({
-        success: false,
-        error: 'receiptData é obrigatório'
-      });
-    }
-
-    const subscriptionStatus = await inAppPurchaseService.checkSubscriptionStatus(receiptData);
-
-    res.json({
-      success: true,
-      data: subscriptionStatus
-    });
-  } catch (error) {
-    console.error('Erro ao verificar assinatura:', error);
-    res.status(500).json({
-      success: false,
-      error: error.message
-    });
-  }
-});
-
-/**
- * POST /api/in-app-purchase/verify-and-update
- * Valida o receipt e atualiza o status do usuário
+ * ENDPOINT PRINCIPAL - RECRIADO DO ZERO
+ * 
+ * Recebe do app:
+ * - receiptData (base64)
+ * - transactionId
+ * - originalTransactionId
+ * - userEmail
+ * - productId
+ * 
+ * Fluxo:
+ * 1. Identifica usuário pelo JWT token
+ * 2. Valida que o email corresponde
+ * 3. Salva originalTransactionId IMEDIATAMENTE (para webhook encontrar)
+ * 4. Valida receipt com Apple
+ * 5. Atualiza usuário com dados da assinatura
+ * 6. Retorna sucesso
  */
 router.post('/verify-and-update', authenticateToken, async (req, res) => {
   try {
-    const { receiptData } = req.body;
+    console.log('📬 [BACKEND] Nova requisição de validação de compra');
+    
+    const { receiptData, transactionId, originalTransactionId, userEmail, productId } = req.body;
     const userId = req.user._id;
 
+    // Validar dados obrigatórios
     if (!receiptData) {
+      console.error('❌ [BACKEND] receiptData não fornecido');
       return res.status(400).json({
         success: false,
         error: 'receiptData é obrigatório'
       });
     }
 
-    // Verificar status da assinatura
-    const subscriptionStatus = await inAppPurchaseService.checkSubscriptionStatus(receiptData);
-
-    if (!subscriptionStatus.active) {
-      return res.status(402).json({
-        success: false,
-        error: 'Assinatura não está ativa',
-        data: subscriptionStatus
-      });
-    }
-
-    // Atualizar usuário com informações da assinatura
+    // Buscar usuário
     const user = await User.findById(userId);
     if (!user) {
+      console.error('❌ [BACKEND] Usuário não encontrado:', userId);
       return res.status(404).json({
         success: false,
         error: 'Usuário não encontrado'
       });
     }
 
-    const subscription = subscriptionStatus.subscription;
-    
-    // ✅ IMPORTANTE: Salvar o originalTransactionId IMEDIATAMENTE
-    // Isso garante que o webhook da Apple possa encontrar o usuário mesmo se chegar antes
-    // do processamento completo da compra
-    if (subscription.originalTransactionId && !user.iapOriginalTransactionId) {
-      console.log('🔐 Salvando originalTransactionId imediatamente para identificação do webhook...');
-      user.iapOriginalTransactionId = subscription.originalTransactionId;
+    console.log('👤 [BACKEND] Usuário identificado:', user.email);
+    console.log('📦 [BACKEND] Dados recebidos:');
+    console.log('   - userEmail:', userEmail);
+    console.log('   - productId:', productId);
+    console.log('   - transactionId:', transactionId);
+    console.log('   - originalTransactionId:', originalTransactionId);
+
+    // Validar email (segurança adicional)
+    if (userEmail && userEmail.toLowerCase() !== user.email.toLowerCase()) {
+      console.warn('⚠️ [BACKEND] Email do body não corresponde ao usuário do token!');
+      console.warn('   - Token:', user.email);
+      console.warn('   - Body:', userEmail);
+    }
+
+    // ✅ CRÍTICO: Salvar originalTransactionId IMEDIATAMENTE
+    // Isso garante que o webhook da Apple possa encontrar o usuário
+    if (originalTransactionId && !user.iapOriginalTransactionId) {
+      console.log('🔐 [BACKEND] Salvando originalTransactionId ANTES de validar receipt...');
+      user.iapOriginalTransactionId = originalTransactionId;
       await user.save();
-      console.log('✅ originalTransactionId salvo:', subscription.originalTransactionId);
+      console.log('✅ [BACKEND] originalTransactionId salvo:', originalTransactionId);
     }
-    
-    console.log('📦 Dados da assinatura recebidos:', JSON.stringify(subscription, null, 2));
-    console.log('👤 Usuário antes da atualização:', {
-      email: user.email,
-      plan: user.plan,
-      iapOriginalTransactionId: user.iapOriginalTransactionId
-    });
-    
-    // Lógica igual ao AppMax: se já tem plano válido, somar 1 mês a partir da data de vencimento
-    // Caso contrário, usar a data de expiração da assinatura
-    const now = new Date();
-    let planExpiresAt;
-    
-    if (user.planExpiresAt && new Date(user.planExpiresAt) > now) {
-      // Plano ainda válido - somar 1 mês a partir da data de vencimento
-      planExpiresAt = new Date(user.planExpiresAt);
-      planExpiresAt.setMonth(planExpiresAt.getMonth() + 1);
-    } else {
-      // Usar a data de expiração da assinatura
-      planExpiresAt = subscription.expiresDate;
+
+    // Validar receipt com Apple
+    console.log('📤 [BACKEND] Validando receipt com Apple...');
+    const subscriptionStatus = await inAppPurchaseService.checkSubscriptionStatus(receiptData);
+
+    if (!subscriptionStatus.isValid) {
+      console.error('❌ [BACKEND] Receipt inválido');
+      return res.status(400).json({
+        success: false,
+        error: 'Receipt inválido'
+      });
     }
+
+    console.log('✅ [BACKEND] Receipt válido!');
+
+    // Extrair dados da assinatura
+    const subscription = subscriptionStatus.subscription;
+    const expiresDate = subscription.expiresDate ? new Date(subscription.expiresDate) : null;
+
+    console.log('📊 [BACKEND] Dados da assinatura:');
+    console.log('   - productId:', subscription.productId);
+    console.log('   - expiresDate:', expiresDate);
+    console.log('   - originalTransactionId:', subscription.originalTransactionId);
+
+    // Atualizar usuário
+    console.log('💾 [BACKEND] Atualizando usuário no banco...');
     
-    // Atualizar dados do usuário
     user.plan = 'premium';
-    user.planExpiresAt = planExpiresAt;
-    user.iapTransactionId = subscription.transactionId;
-    user.iapOriginalTransactionId = subscription.originalTransactionId;
-    user.iapProductId = subscription.productId;
-    user.iapReceiptData = receiptData; // Armazenar o receipt para validações futuras
+    user.planExpiresAt = expiresDate;
     user.status = 'approved';
-    user.isInTrial = false; // Usuário não está mais em trial, tem assinatura paga
+    user.isInTrial = false;
     
+    // Salvar IDs (se ainda não foram salvos)
+    if (!user.iapOriginalTransactionId && subscription.originalTransactionId) {
+      user.iapOriginalTransactionId = subscription.originalTransactionId;
+    }
+    if (!user.iapTransactionId && (transactionId || subscription.transactionId)) {
+      user.iapTransactionId = transactionId || subscription.transactionId;
+    }
+    if (!user.iapProductId && (productId || subscription.productId)) {
+      user.iapProductId = productId || subscription.productId;
+    }
+    
+    // Salvar receipt (útil para debug)
+    user.iapReceiptData = receiptData;
+    
+    // Data de aprovação (se primeira vez)
     if (!user.approvedAt) {
       user.approvedAt = new Date();
     }
 
-    console.log('💾 Salvando usuário com dados:', {
-      plan: user.plan,
-      iapTransactionId: user.iapTransactionId,
-      iapOriginalTransactionId: user.iapOriginalTransactionId,
-      iapProductId: user.iapProductId,
-      planExpiresAt: user.planExpiresAt
-    });
-
-    await user.save();
-    
-    console.log('✅ Usuário salvo com sucesso!');
-
-    res.json({
-      success: true,
-      message: 'Assinatura validada e usuário atualizado com sucesso',
-      data: {
-        subscription: subscription,
-        user: {
-          plan: user.plan,
-          planExpiresAt: user.planExpiresAt,
-          status: user.status
-        }
-      }
-    });
-  } catch (error) {
-    console.error('Erro ao verificar e atualizar assinatura:', error);
-    res.status(500).json({
-      success: false,
-      error: error.message
-    });
-  }
-});
-
-/**
- * POST /api/in-app-purchase/save-transaction-id
- * Salva o originalTransactionId assim que a compra é confirmada
- * Isso garante que o webhook da Apple possa encontrar o usuário
- * mesmo se chegar antes da validação completa
- */
-router.post('/save-transaction-id', authenticateToken, async (req, res) => {
-  try {
-    const { originalTransactionId, transactionId, productId } = req.body;
-    const userId = req.user._id;
-
-    if (!originalTransactionId) {
-      return res.status(400).json({
-        success: false,
-        error: 'originalTransactionId é obrigatório'
-      });
-    }
-
-    const user = await User.findById(userId);
-    if (!user) {
-      return res.status(404).json({
-        success: false,
-        error: 'Usuário não encontrado'
-      });
-    }
-
-    // Salvar o originalTransactionId imediatamente
-    // Isso permite que o webhook encontre o usuário mesmo antes da validação completa
-    if (!user.iapOriginalTransactionId) {
-      user.iapOriginalTransactionId = originalTransactionId;
-      console.log('🔐 Salvando originalTransactionId para identificação do webhook:', originalTransactionId);
-    }
-
-    // Salvar transactionId e productId se fornecidos
-    if (transactionId && !user.iapTransactionId) {
-      user.iapTransactionId = transactionId;
-    }
-
-    if (productId && !user.iapProductId) {
-      user.iapProductId = productId;
-    }
-
     await user.save();
 
-    console.log('✅ originalTransactionId salvo com sucesso para usuário:', user.email);
+    console.log('✅ [BACKEND] Usuário atualizado com sucesso!');
+    console.log('   - Plan:', user.plan);
+    console.log('   - Expires:', user.planExpiresAt);
+    console.log('   - Status:', user.status);
+    console.log('   - isInTrial:', user.isInTrial);
 
+    // Retornar sucesso
     res.json({
       success: true,
-      message: 'Transaction ID salvo com sucesso',
+      message: 'Assinatura ativada com sucesso',
       data: {
-        originalTransactionId: user.iapOriginalTransactionId
+        plan: user.plan,
+        planExpiresAt: user.planExpiresAt,
+        status: user.status
       }
     });
+
   } catch (error) {
-    console.error('Erro ao salvar transaction ID:', error);
+    console.error('❌ [BACKEND] Erro ao processar compra:', error);
     res.status(500).json({
       success: false,
-      error: error.message
+      error: error.message || 'Erro ao processar compra'
     });
   }
 });
 
 /**
- * POST /api/in-app-purchase/validate-transaction
- * Valida uma transação específica
- */
-router.post('/validate-transaction', authenticateToken, async (req, res) => {
-  try {
-    const { receiptData, transactionId } = req.body;
-
-    if (!receiptData || !transactionId) {
-      return res.status(400).json({
-        success: false,
-        error: 'receiptData e transactionId são obrigatórios'
-      });
-    }
-
-    const validation = await inAppPurchaseService.validateTransaction(receiptData, transactionId);
-
-    res.json({
-      success: true,
-      data: validation
-    });
-  } catch (error) {
-    console.error('Erro ao validar transação:', error);
-    res.status(500).json({
-      success: false,
-      error: error.message
-    });
-  }
-});
-
-/**
- * POST /api/in-app-purchase/app-store-notification
- * Webhook para receber notificações do servidor da App Store
- * Este endpoint não requer autenticação, pois a Apple valida via JWT
+ * WEBHOOK DA APPLE - Recebe notificações sobre mudanças na assinatura
+ * (renovações, cancelamentos, etc)
  */
 router.post('/app-store-notification', async (req, res) => {
   try {
-    console.log('\n📬 NOTIFICAÇÃO DO SERVIDOR DA APP STORE RECEBIDA');
-    console.log('📦 Headers:', JSON.stringify(req.headers, null, 2));
-    console.log('📦 Body:', JSON.stringify(req.body, null, 2));
-
-    // A Apple envia notificações como JWT no campo 'signedPayload'
-    const { signedPayload } = req.body;
-
-    if (!signedPayload) {
-      console.error('❌ signedPayload não encontrado no body');
-      return res.status(400).json({
-        success: false,
-        error: 'signedPayload é obrigatório'
-      });
+    console.log('📬 [WEBHOOK] Notificação recebida da Apple');
+    
+    const result = await inAppPurchaseService.processAppStoreNotification(req.body);
+    
+    if (result.processed) {
+      console.log('✅ [WEBHOOK] Notificação processada');
+      res.status(200).json({ received: true });
+    } else {
+      console.warn('⚠️ [WEBHOOK] Notificação não processada:', result.message);
+      res.status(200).json({ received: true, message: result.message });
     }
-
-    // Processar a notificação
-    const result = await inAppPurchaseService.processAppStoreNotification(signedPayload);
-
-    // Sempre retornar 200 para a Apple (mesmo em caso de erro interno)
-    // A Apple vai reenviar se não receber 200
-    res.status(200).json({
-      success: true,
-      message: 'Notificação processada'
-    });
   } catch (error) {
-    console.error('❌ Erro ao processar notificação da App Store:', error);
-    // Sempre retornar 200 para a Apple
-    res.status(200).json({
-      success: false,
-      error: error.message
-    });
+    console.error('❌ [WEBHOOK] Erro ao processar notificação:', error);
+    // Sempre retornar 200 para Apple não retentar indefinidamente
+    res.status(200).json({ received: true, error: error.message });
   }
 });
 
 module.exports = router;
-
