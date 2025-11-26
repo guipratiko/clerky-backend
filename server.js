@@ -13,6 +13,7 @@ const evolutionApi = require('./services/evolutionApi');
 const schedulerService = require('./services/schedulerService');
 const massDispatchService = require('./services/massDispatchService');
 const redisClient = require('./utils/redisClient');
+const checkExpiredSubscriptions = require('./jobs/checkExpiredSubscriptions');
 
 const app = express();
 const server = http.createServer(app);
@@ -284,6 +285,29 @@ server.listen(PORT, () => {
   // Iniciar agendador automático
   schedulerService.start();
   mindClerkyExecutor.init();
+  
+  // ✅ Iniciar verificação de assinaturas expiradas
+  console.log('🕐 Iniciando verificação de assinaturas expiradas...');
+  
+  // Executar imediatamente ao iniciar
+  checkExpiredSubscriptions()
+    .then(result => {
+      console.log(`✅ Verificação inicial concluída: ${result.updated || 0} usuários atualizados`);
+    })
+    .catch(error => {
+      console.error('❌ Erro na verificação inicial:', error);
+    });
+  
+  // Executar a cada 1 hora (3600000 ms)
+  setInterval(async () => {
+    try {
+      await checkExpiredSubscriptions();
+    } catch (error) {
+      console.error('❌ Erro na verificação periódica:', error);
+    }
+  }, 3600000); // 1 hora
+  
+  console.log('✅ Verificação de assinaturas configurada (roda a cada 1 hora)');
 });
 
 module.exports = { app, server, io };

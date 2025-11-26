@@ -31,6 +31,20 @@ const authenticateToken = async (req, res, next) => {
       });
     }
 
+    // ✅ VERIFICAR EXPIRAÇÃO DE ASSINATURA PREMIUM
+    // Se o usuário tem plano premium mas a data expirou, atualizar para free
+    if (user.plan === 'premium' && user.planExpiresAt) {
+      const now = new Date();
+      const expiresAt = new Date(user.planExpiresAt);
+      
+      if (now > expiresAt) {
+        console.log(`⏰ [MIDDLEWARE] Plano premium de ${user.email} expirou. Atualizando para free...`);
+        user.plan = 'free';
+        await user.save();
+        console.log(`✅ [MIDDLEWARE] Usuário ${user.email} atualizado para free`);
+      }
+    }
+
     // Verificar se trial expirou (apenas para não-admins)
     if (user.role !== 'admin' && user.isInTrial && user.trialEndsAt) {
       const now = new Date();
