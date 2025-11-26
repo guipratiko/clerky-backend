@@ -1,4 +1,5 @@
 const User = require('../models/User');
+const socketEmitter = require('../utils/socketEmitter');
 
 /**
  * Job para verificar e atualizar assinaturas expiradas
@@ -35,6 +36,14 @@ async function checkExpiredSubscriptions() {
         
         updated++;
         console.log(`✅ [CRON] ${user.email} atualizado para free`);
+        
+        // 🔥 EMITIR EVENTO VIA WEBSOCKET
+        socketEmitter.emitPlanUpdate(user._id.toString(), {
+          plan: user.plan,
+          planExpiresAt: user.planExpiresAt,
+          status: user.status,
+          isInTrial: user.isInTrial
+        });
       } catch (error) {
         console.error(`❌ [CRON] Erro ao atualizar ${user.email}:`, error.message);
       }

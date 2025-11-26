@@ -14,6 +14,7 @@ const schedulerService = require('./services/schedulerService');
 const massDispatchService = require('./services/massDispatchService');
 const redisClient = require('./utils/redisClient');
 const checkExpiredSubscriptions = require('./jobs/checkExpiredSubscriptions');
+const socketEmitter = require('./utils/socketEmitter');
 
 const app = express();
 const server = http.createServer(app);
@@ -54,6 +55,32 @@ const io = socketIo(server, {
   },
   allowEIO3: true,
   transports: ['websocket', 'polling']
+});
+
+// ✅ Inicializar Socket Emitter
+socketEmitter.initialize(io);
+
+// ✅ Configurar event listeners do Socket.IO
+io.on('connection', (socket) => {
+  console.log(`🔌 [SOCKET] Cliente conectado: ${socket.id}`);
+  
+  // Cliente entra no room do seu usuário
+  socket.on('join:user', (userId) => {
+    const room = `user:${userId}`;
+    socket.join(room);
+    console.log(`👤 [SOCKET] Usuário ${userId} entrou no room ${room}`);
+  });
+  
+  // Cliente sai do room
+  socket.on('leave:user', (userId) => {
+    const room = `user:${userId}`;
+    socket.leave(room);
+    console.log(`👋 [SOCKET] Usuário ${userId} saiu do room ${room}`);
+  });
+  
+  socket.on('disconnect', () => {
+    console.log(`🔌 [SOCKET] Cliente desconectado: ${socket.id}`);
+  });
 });
 
 // Middleware CORS

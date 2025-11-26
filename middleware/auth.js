@@ -1,5 +1,6 @@
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
+const socketEmitter = require('../utils/socketEmitter');
 
 // Middleware para verificar token JWT
 const authenticateToken = async (req, res, next) => {
@@ -42,6 +43,14 @@ const authenticateToken = async (req, res, next) => {
         user.plan = 'free';
         await user.save();
         console.log(`✅ [MIDDLEWARE] Usuário ${user.email} atualizado para free`);
+        
+        // 🔥 EMITIR EVENTO VIA WEBSOCKET
+        socketEmitter.emitPlanUpdate(user._id.toString(), {
+          plan: user.plan,
+          planExpiresAt: user.planExpiresAt,
+          status: user.status,
+          isInTrial: user.isInTrial
+        });
       }
     }
 
