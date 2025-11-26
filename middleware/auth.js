@@ -25,21 +25,17 @@ const authenticateToken = async (req, res, next) => {
       });
     }
 
-    if (user.status !== 'approved') {
-      return res.status(403).json({
-        success: false,
-        error: 'Usuário não aprovado para acesso ao sistema'
-      });
-    }
-
-    // ✅ VERIFICAR EXPIRAÇÃO DE ASSINATURA PREMIUM
+    // ✅ VERIFICAR EXPIRAÇÃO DE ASSINATURA PREMIUM (ANTES de verificar status)
     // Se o usuário tem plano premium mas a data expirou, atualizar para free
+    // Isso deve ser feito ANTES de verificar o status, para garantir que sempre atualiza
     if (user.plan === 'premium' && user.planExpiresAt) {
       const now = new Date();
       const expiresAt = new Date(user.planExpiresAt);
       
       if (now > expiresAt) {
         console.log(`⏰ [MIDDLEWARE] Plano premium de ${user.email} expirou. Atualizando para free...`);
+        console.log(`   - Data atual: ${now.toISOString()}`);
+        console.log(`   - Data expiração: ${expiresAt.toISOString()}`);
         user.plan = 'free';
         await user.save();
         console.log(`✅ [MIDDLEWARE] Usuário ${user.email} atualizado para free`);
@@ -52,6 +48,13 @@ const authenticateToken = async (req, res, next) => {
           isInTrial: user.isInTrial
         });
       }
+    }
+
+    if (user.status !== 'approved') {
+      return res.status(403).json({
+        success: false,
+        error: 'Usuário não aprovado para acesso ao sistema'
+      });
     }
 
     // Verificar se trial expirou (apenas para não-admins)

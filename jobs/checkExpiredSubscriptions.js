@@ -9,14 +9,17 @@ const socketEmitter = require('../utils/socketEmitter');
 async function checkExpiredSubscriptions() {
   try {
     console.log('🔍 [CRON] Verificando assinaturas expiradas...');
-    
     const now = new Date();
+    console.log(`   - Data/hora atual: ${now.toISOString()}`);
     
     // Buscar todos os usuários com plano premium e data de expiração passada
+    // Não filtrar por status, pois queremos atualizar mesmo se estiver suspended
     const expiredUsers = await User.find({
       plan: 'premium',
       planExpiresAt: { $lt: now } // Menor que agora (já expirou)
     });
+    
+    console.log(`   - Total de usuários premium encontrados: ${expiredUsers.length}`);
     
     if (expiredUsers.length === 0) {
       console.log('✅ [CRON] Nenhuma assinatura expirada encontrada');
@@ -29,7 +32,15 @@ async function checkExpiredSubscriptions() {
     let updated = 0;
     for (const user of expiredUsers) {
       try {
-        console.log(`⏰ [CRON] Atualizando ${user.email} (expirou em ${user.planExpiresAt.toISOString()})`);
+        const expiresAt = new Date(user.planExpiresAt);
+        const diffMs = now - expiresAt;
+        const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+        const diffMinutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
+        
+        console.log(`⏰ [CRON] Atualizando ${user.email}`);
+        console.log(`   - Expirou em: ${expiresAt.toISOString()}`);
+        console.log(`   - Status atual: ${user.status}`);
+        console.log(`   - Tempo desde expiração: ${diffHours}h ${diffMinutes}min`);
         
         user.plan = 'free';
         await user.save();
@@ -46,6 +57,7 @@ async function checkExpiredSubscriptions() {
         });
       } catch (error) {
         console.error(`❌ [CRON] Erro ao atualizar ${user.email}:`, error.message);
+        console.error(`   - Stack:`, error.stack);
       }
     }
     

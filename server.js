@@ -325,16 +325,16 @@ server.listen(PORT, () => {
       console.error('❌ Erro na verificação inicial:', error);
     });
   
-  // Executar a cada 1 hora (3600000 ms)
+  // Executar a cada 1 minuto (60000 ms)
   setInterval(async () => {
     try {
       await checkExpiredSubscriptions();
     } catch (error) {
       console.error('❌ Erro na verificação periódica:', error);
     }
-  }, 3600000); // 1 hora
+  }, 60000); // 1 minuto
   
-  console.log('✅ Verificação de assinaturas configurada (roda a cada 1 hora)');
+  console.log('✅ Verificação de assinaturas configurada (roda a cada 1 minuto)');
 });
 
 module.exports = { app, server, io };

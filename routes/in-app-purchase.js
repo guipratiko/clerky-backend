@@ -3,6 +3,7 @@ const router = express.Router();
 const User = require('../models/User');
 const inAppPurchaseService = require('../services/inAppPurchaseService');
 const { authenticateToken } = require('../middleware/auth');
+const checkExpiredSubscriptions = require('../jobs/checkExpiredSubscriptions');
 
 /**
  * ENDPOINT PRINCIPAL - RECRIADO DO ZERO
@@ -196,6 +197,30 @@ router.post('/app-store-notification', async (req, res) => {
     console.error('❌ [WEBHOOK] Erro ao processar notificação:', error);
     // Sempre retornar 200 para Apple não retentar indefinidamente
     res.status(200).json({ received: true, error: error.message });
+  }
+});
+
+/**
+ * ROTA DE TESTE - Forçar verificação de assinaturas expiradas
+ * GET /api/in-app-purchase/check-expired
+ * Útil para testar sem esperar o cron job (1 hora)
+ */
+router.get('/check-expired', async (req, res) => {
+  try {
+    console.log('🔧 [TEST] Verificação manual de assinaturas expiradas solicitada');
+    const result = await checkExpiredSubscriptions();
+    
+    res.json({
+      success: true,
+      message: 'Verificação concluída',
+      result
+    });
+  } catch (error) {
+    console.error('❌ [TEST] Erro na verificação manual:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
   }
 });
 
