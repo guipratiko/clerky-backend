@@ -568,6 +568,11 @@ class InAppPurchaseService {
     const diffMs = expiresDate.getTime() - now.getTime();
     const diffMinutes = Math.floor(diffMs / (1000 * 60));
     
+    // Extrair expiresDateMs para logs
+    const expiresDateMs = transactionInfo.expiresDate || 
+                          transactionInfo.expires_date_ms || 
+                          transactionInfo.expires_date;
+    
     console.log('📅 [INITIAL_BUY] Dados da assinatura:');
     console.log('   - expiresDateMs (raw):', expiresDateMs);
     console.log('   - expiresDate (parsed):', expiresDate.toISOString());
@@ -611,6 +616,11 @@ class InAppPurchaseService {
     const now = new Date();
     const diffMs = expiresDate.getTime() - now.getTime();
     const diffMinutes = Math.floor(diffMs / (1000 * 60));
+    
+    // Extrair expiresDateMs para logs
+    const expiresDateMs = transactionInfo.expiresDate || 
+                          transactionInfo.expires_date_ms || 
+                          transactionInfo.expires_date;
     
     console.log('📅 [DID_RENEW] Dados da renovação:');
     console.log('   - expiresDateMs (raw):', expiresDateMs);
