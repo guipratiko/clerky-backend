@@ -2,6 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const jwt = require('jsonwebtoken');
 const axios = require('axios');
+const socketEmitter = require('../utils/socketEmitter');
 
 /**
  * Serviço para validação de compras in-app (In-App Purchase)
@@ -149,7 +150,7 @@ class InAppPurchaseService {
       const expiresDate = new Date(expiresDateMs);
       const purchaseDateMs = parseInt(latestSubscription.purchase_date_ms);
       const purchaseDate = new Date(purchaseDateMs);
-      const now = new Date();
+      const currentDate = new Date();
       
       console.log('📅 [IAP] Dados da assinatura recebida da Apple:');
       console.log('   - expires_date_ms (raw):', latestSubscription.expires_date_ms);
@@ -157,7 +158,7 @@ class InAppPurchaseService {
       console.log('   - expiresDate (Date object):', expiresDate.toISOString());
       console.log('   - purchase_date_ms:', latestSubscription.purchase_date_ms);
       console.log('   - purchaseDate:', purchaseDate.toISOString());
-      console.log('   - now:', now.toISOString());
+      console.log('   - currentDate:', currentDate.toISOString());
       
       // Calcular tempo restante
       const diffMs = expiresDateMs - Date.now();
@@ -519,27 +520,49 @@ class InAppPurchaseService {
   }
 
   /**
+   * Função auxiliar para parsear expiresDate da Apple
+   * @param {Object} transactionInfo - Informações da transação
+   * @param {boolean} useFallback - Se true, usa fallback de 30 dias se não encontrar
+   * @returns {Date|null} - Data de expiração parseada
+   */
+  parseExpiresDate(transactionInfo, useFallback = true) {
+    const expiresDateMs = transactionInfo.expiresDate || 
+                          transactionInfo.expires_date_ms || 
+                          transactionInfo.expires_date;
+    
+    if (expiresDateMs) {
+      const ms = typeof expiresDateMs === 'string' ? parseInt(expiresDateMs) : expiresDateMs;
+      return new Date(ms);
+    }
+    
+    if (useFallback) {
+      console.warn('⚠️ expiresDate não encontrado, usando fallback de 30 dias');
+      return new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+    }
+    
+    return null;
+  }
+
+  /**
+   * Função auxiliar para emitir atualização via WebSocket
+   * @param {Object} user - Usuário
+   */
+  emitPlanUpdate(user) {
+    socketEmitter.emitPlanUpdate(user._id.toString(), {
+      plan: user.plan,
+      planExpiresAt: user.planExpiresAt,
+      status: user.status,
+      isInTrial: user.isInTrial
+    });
+  }
+
+  /**
    * Processa compra inicial
    */
   async handleInitialBuy(user, transactionInfo, renewalInfo) {
     console.log('✅ Processando compra inicial');
     
-    // ✅ A Apple envia expiresDate em MILISSEGUNDOS (expires_date_ms)
-    // Precisamos converter corretamente
-    const expiresDateMs = transactionInfo.expiresDate || 
-                          transactionInfo.expires_date_ms || 
-                          transactionInfo.expires_date;
-    
-    let expiresDate;
-    if (expiresDateMs) {
-      // Se for string, tentar parsear como número primeiro
-      const ms = typeof expiresDateMs === 'string' ? parseInt(expiresDateMs) : expiresDateMs;
-      expiresDate = new Date(ms);
-    } else {
-      // Fallback: 30 dias (mas isso não deveria acontecer)
-      console.warn('⚠️ expiresDate não encontrado, usando fallback de 30 dias');
-      expiresDate = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
-    }
+    const expiresDate = this.parseExpiresDate(transactionInfo, true);
 
     const now = new Date();
     const diffMs = expiresDate.getTime() - now.getTime();
@@ -574,13 +597,7 @@ class InAppPurchaseService {
     console.log(`   - planExpiresAt: ${user.planExpiresAt.toISOString()}`);
     
     // 🔥 EMITIR EVENTO VIA WEBSOCKET
-    const socketEmitter = require('../utils/socketEmitter');
-    socketEmitter.emitPlanUpdate(user._id.toString(), {
-      plan: user.plan,
-      planExpiresAt: user.planExpiresAt,
-      status: user.status,
-      isInTrial: user.isInTrial
-    });
+    this.emitPlanUpdate(user);
   }
 
   /**
@@ -589,19 +606,7 @@ class InAppPurchaseService {
   async handleDidRenew(user, transactionInfo, renewalInfo) {
     console.log('✅ Processando renovação bem-sucedida');
     
-    // ✅ A Apple envia expiresDate em MILISSEGUNDOS (expires_date_ms)
-    const expiresDateMs = transactionInfo.expiresDate || 
-                          transactionInfo.expires_date_ms || 
-                          transactionInfo.expires_date;
-    
-    let expiresDate;
-    if (expiresDateMs) {
-      const ms = typeof expiresDateMs === 'string' ? parseInt(expiresDateMs) : expiresDateMs;
-      expiresDate = new Date(ms);
-    } else {
-      console.warn('⚠️ expiresDate não encontrado, usando fallback de 30 dias');
-      expiresDate = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
-    }
+    const expiresDate = this.parseExpiresDate(transactionInfo, true);
 
     const now = new Date();
     const diffMs = expiresDate.getTime() - now.getTime();
@@ -642,13 +647,7 @@ class InAppPurchaseService {
     console.log(`   - planExpiresAt: ${user.planExpiresAt.toISOString()}`);
     
     // 🔥 EMITIR EVENTO VIA WEBSOCKET
-    const socketEmitter = require('../utils/socketEmitter');
-    socketEmitter.emitPlanUpdate(user._id.toString(), {
-      plan: user.plan,
-      planExpiresAt: user.planExpiresAt,
-      status: user.status,
-      isInTrial: user.isInTrial
-    });
+    this.emitPlanUpdate(user);
   }
 
   /**
@@ -678,20 +677,7 @@ class InAppPurchaseService {
   async handleDidRecover(user, transactionInfo, renewalInfo) {
     console.log('✅ Processando recuperação após falha');
     
-    // ✅ A Apple envia expiresDate em MILISSEGUNDOS
-    const expiresDateMs = transactionInfo.expiresDate || 
-                          transactionInfo.expires_date_ms || 
-                          transactionInfo.expires_date;
-    
-    let expiresDate;
-    if (expiresDateMs) {
-      const ms = typeof expiresDateMs === 'string' ? parseInt(expiresDateMs) : expiresDateMs;
-      expiresDate = new Date(ms);
-    } else {
-      console.warn('⚠️ expiresDate não encontrado, usando fallback de 30 dias');
-      expiresDate = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
-    }
-
+    const expiresDate = this.parseExpiresDate(transactionInfo, true);
     console.log('📅 [DID_RECOVER] Data de expiração:', expiresDate.toISOString());
 
     user.plan = 'premium';
@@ -703,13 +689,7 @@ class InAppPurchaseService {
     console.log('✅ Usuário recuperado após falha');
     
     // 🔥 EMITIR EVENTO VIA WEBSOCKET
-    const socketEmitter = require('../utils/socketEmitter');
-    socketEmitter.emitPlanUpdate(user._id.toString(), {
-      plan: user.plan,
-      planExpiresAt: user.planExpiresAt,
-      status: user.status,
-      isInTrial: user.isInTrial
-    });
+    this.emitPlanUpdate(user);
   }
 
   /**
@@ -733,22 +713,11 @@ class InAppPurchaseService {
   async handleExpired(user, transactionInfo, renewalInfo) {
     console.log('⏰ Processando assinatura expirada');
     
-    // ✅ Verificar se a assinatura realmente expirou
-    // A Apple envia expiresDate em MILISSEGUNDOS
-    const expiresDateMs = transactionInfo.expiresDate || 
-                          transactionInfo.expires_date_ms || 
-                          transactionInfo.expires_date;
-    
-    let expiresDate = null;
-    if (expiresDateMs) {
-      const ms = typeof expiresDateMs === 'string' ? parseInt(expiresDateMs) : expiresDateMs;
-      expiresDate = new Date(ms);
-    }
+    const expiresDate = this.parseExpiresDate(transactionInfo, false);
     
     const now = new Date();
     
     console.log('📅 [EXPIRED] Dados da expiração:');
-    console.log('   - expiresDateMs (raw):', expiresDateMs);
     console.log('   - expiresDate (parsed):', expiresDate?.toISOString());
     console.log('   - now:', now.toISOString());
     console.log('   - Status atual:', user.status);
@@ -773,13 +742,7 @@ class InAppPurchaseService {
       console.log(`   - Status: ${oldStatus} → ${user.status}`);
       
       // 🔥 EMITIR EVENTO VIA WEBSOCKET
-      const socketEmitter = require('../utils/socketEmitter');
-      socketEmitter.emitPlanUpdate(user._id.toString(), {
-        plan: user.plan,
-        planExpiresAt: user.planExpiresAt,
-        status: user.status,
-        isInTrial: user.isInTrial
-      });
+      this.emitPlanUpdate(user);
     } else {
       console.log('ℹ️ Notificação de expiração recebida, mas a assinatura ainda não expirou');
       if (expiresDate) {
@@ -800,19 +763,10 @@ class InAppPurchaseService {
   async handleRenewalStatusChange(user, transactionInfo, renewalInfo, subtype) {
     console.log(`🔄 Processando mudança de status de renovação: ${subtype}`);
     
-    // ✅ Extrair data de expiração (Apple envia em milissegundos)
-    const expiresDateMs = transactionInfo.expiresDate || 
-                          transactionInfo.expires_date_ms || 
-                          transactionInfo.expires_date;
+    const expiresDate = this.parseExpiresDate(transactionInfo, false);
     
-    let expiresDate = null;
-    if (expiresDateMs) {
-      const ms = typeof expiresDateMs === 'string' ? parseInt(expiresDateMs) : expiresDateMs;
-      expiresDate = new Date(ms);
-      
-      console.log('📅 [RENEWAL_STATUS] Data de expiração:');
-      console.log('   - expiresDateMs (raw):', expiresDateMs);
-      console.log('   - expiresDate (parsed):', expiresDate.toISOString());
+    if (expiresDate) {
+      console.log('📅 [RENEWAL_STATUS] Data de expiração:', expiresDate.toISOString());
     }
 
     if (subtype === 'AUTO_RENEW_ENABLED') {
