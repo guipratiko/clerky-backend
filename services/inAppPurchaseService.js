@@ -468,6 +468,11 @@ class InAppPurchaseService {
           await this.handleExpired(user, transactionInfo, renewalInfo);
           break;
 
+        case 'DID_CHANGE_RENEWAL_STATUS':
+          // Status de renovação automática mudou (habilitado/desabilitado)
+          await this.handleRenewalStatusChange(user, transactionInfo, renewalInfo, subtype);
+          break;
+
         default:
           console.log('ℹ️ Tipo de notificação não processado:', effectiveNotificationType);
       }
@@ -628,6 +633,40 @@ class InAppPurchaseService {
       console.log('⏰ Plano removido devido a expiração da assinatura');
     } else {
       console.log('ℹ️ Notificação de expiração recebida, mas a assinatura ainda não expirou');
+    }
+  }
+
+  /**
+   * Processa mudança no status de renovação automática
+   * @param {Object} user - Usuário
+   * @param {Object} transactionInfo - Informações da transação
+   * @param {Object} renewalInfo - Informações de renovação
+   * @param {string} subtype - Subtype da notificação (AUTO_RENEW_ENABLED ou AUTO_RENEW_DISABLED)
+   */
+  async handleRenewalStatusChange(user, transactionInfo, renewalInfo, subtype) {
+    console.log(`🔄 Processando mudança de status de renovação: ${subtype}`);
+    
+    // Extrair data de expiração
+    const expiresDateMs = transactionInfo.expiresDate || transactionInfo.expires_date_ms || transactionInfo.expires_date;
+    const expiresDate = expiresDateMs 
+      ? new Date(typeof expiresDateMs === 'string' ? expiresDateMs : parseInt(expiresDateMs))
+      : null;
+
+    if (subtype === 'AUTO_RENEW_ENABLED') {
+      console.log('✅ Renovação automática HABILITADA pelo usuário');
+      // Não precisa fazer nada, apenas logar
+      // A assinatura continua ativa e será renovada automaticamente
+    } else if (subtype === 'AUTO_RENEW_DISABLED') {
+      console.log('⚠️ Renovação automática DESABILITADA pelo usuário');
+      // Não precisa fazer nada ainda, a assinatura continua ativa até expirar
+      // Quando expirar, o webhook EXPIRED será enviado
+    }
+
+    // Atualizar data de expiração se disponível (pode ter mudado)
+    if (expiresDate && user.plan === 'premium') {
+      user.planExpiresAt = expiresDate;
+      await user.save();
+      console.log(`📅 Data de expiração atualizada: ${expiresDate.toISOString()}`);
     }
   }
 }

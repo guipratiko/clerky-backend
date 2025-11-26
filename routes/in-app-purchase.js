@@ -82,15 +82,17 @@ router.post('/verify-and-update', authenticateToken, async (req, res) => {
     console.log('📤 [BACKEND] Validando receipt com Apple...');
     const subscriptionStatus = await inAppPurchaseService.checkSubscriptionStatus(receiptData);
 
-    if (!subscriptionStatus.isValid) {
-      console.error('❌ [BACKEND] Receipt inválido');
+    if (!subscriptionStatus.active) {
+      console.error('❌ [BACKEND] Receipt inválido ou assinatura inativa');
+      console.error('   - Erro:', subscriptionStatus.error || subscriptionStatus.message);
+      console.error('   - Status:', subscriptionStatus.status);
       return res.status(400).json({
         success: false,
-        error: 'Receipt inválido'
+        error: subscriptionStatus.error || subscriptionStatus.message || 'Receipt inválido ou assinatura inativa'
       });
     }
 
-    console.log('✅ [BACKEND] Receipt válido!');
+    console.log('✅ [BACKEND] Receipt válido e assinatura ativa!');
 
     // Extrair dados da assinatura
     const subscription = subscriptionStatus.subscription;
