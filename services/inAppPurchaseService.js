@@ -12,10 +12,17 @@ class InAppPurchaseService {
     this.keyId = process.env.IAP_KEY_ID || 'D434R8CJKF';
     this.keyPath = process.env.IAP_KEY_PATH || './keys/SubscriptionKey_S3S5V97C68.p8';
     this.bundleId = process.env.IOS_BUNDLE_ID || 'com.br.clerky.clerky';
+    this.sharedSecret = process.env.APPLE_SHARED_SECRET; // ✅ Shared Secret para validar assinaturas
     
     // URLs da API de verificação de receipts
     this.sandboxUrl = 'https://sandbox.itunes.apple.com/verifyReceipt';
     this.productionUrl = 'https://buy.itunes.apple.com/verifyReceipt';
+    
+    // ⚠️ Avisar se o shared secret não estiver configurado
+    if (!this.sharedSecret) {
+      console.warn('⚠️ APPLE_SHARED_SECRET não configurado! Assinaturas não serão validadas corretamente.');
+      console.warn('   Configure APPLE_SHARED_SECRET no .env');
+    }
   }
 
   /**
@@ -33,11 +40,17 @@ class InAppPurchaseService {
       
       console.log(`🔍 Validando receipt no ambiente: ${isProduction ? 'PRODUÇÃO' : 'SANDBOX'}`);
       
-      const response = await axios.post(url, {
+      const payload = {
         'receipt-data': receiptData,
-        'password': '', // Shared secret (opcional, para assinaturas)
         'exclude-old-transactions': false
-      }, {
+      };
+      
+      // ✅ Adicionar shared secret se disponível (necessário para assinaturas)
+      if (this.sharedSecret) {
+        payload.password = this.sharedSecret;
+      }
+      
+      const response = await axios.post(url, payload, {
         headers: {
           'Content-Type': 'application/json'
         }
