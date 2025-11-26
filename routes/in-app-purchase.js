@@ -52,8 +52,15 @@ router.post('/verify-and-update', authenticateToken, async (req, res) => {
     console.log('📦 [BACKEND] Dados recebidos:');
     console.log('   - userEmail:', userEmail);
     console.log('   - productId:', productId);
-    console.log('   - transactionId:', transactionId);
-    console.log('   - originalTransactionId:', originalTransactionId);
+    console.log('   - transactionId:', transactionId || 'null (comum no sandbox)');
+    console.log('   - originalTransactionId:', originalTransactionId || 'null (comum no sandbox)');
+
+    // ⚠️ SANDBOX: IDs podem não vir no getPurchaseHistoryAsync
+    if (!transactionId || !originalTransactionId) {
+      console.warn('⚠️ [BACKEND] IDs de transação não fornecidos');
+      console.warn('   Isso é NORMAL no ambiente sandbox da Apple.');
+      console.warn('   O receipt será usado para validação com a Apple.');
+    }
 
     // Validar email (segurança adicional)
     if (userEmail && userEmail.toLowerCase() !== user.email.toLowerCase()) {
@@ -62,7 +69,7 @@ router.post('/verify-and-update', authenticateToken, async (req, res) => {
       console.warn('   - Body:', userEmail);
     }
 
-    // ✅ CRÍTICO: Salvar originalTransactionId IMEDIATAMENTE
+    // ✅ CRÍTICO: Salvar originalTransactionId IMEDIATAMENTE (se disponível)
     // Isso garante que o webhook da Apple possa encontrar o usuário
     if (originalTransactionId && !user.iapOriginalTransactionId) {
       console.log('🔐 [BACKEND] Salvando originalTransactionId ANTES de validar receipt...');
@@ -141,10 +148,19 @@ router.post('/verify-and-update', authenticateToken, async (req, res) => {
     });
 
   } catch (error) {
-    console.error('❌ [BACKEND] Erro ao processar compra:', error);
+    console.error('❌ [BACKEND] Erro ao processar compra:');
+    console.error('   - Message:', error.message);
+    console.error('   - Stack:', error.stack);
+    
+    if (error.response) {
+      console.error('   - Response Status:', error.response.status);
+      console.error('   - Response Data:', JSON.stringify(error.response.data, null, 2));
+    }
+    
     res.status(500).json({
       success: false,
-      error: error.message || 'Erro ao processar compra'
+      error: error.message || 'Erro ao processar compra',
+      details: error.response?.data || null
     });
   }
 });
