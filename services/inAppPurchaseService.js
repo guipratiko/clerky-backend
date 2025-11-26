@@ -733,23 +733,23 @@ class InAppPurchaseService {
     console.log('   - Status atual:', user.status);
     console.log('   - Plan atual:', user.plan);
     
-    // Se a data de expiração já passou, remover plano premium E suspender
+    // Se a data de expiração já passou, remover plano premium (manter status como approved)
     if (expiresDate && expiresDate < now) {
       console.log('⏰ Assinatura expirada em:', expiresDate.toISOString());
       
       const oldStatus = user.status;
       const oldPlan = user.plan;
       
-      // ✅ MUDAR PLAN PARA FREE E STATUS PARA SUSPENDED
+      // ✅ MUDAR PLAN PARA FREE (manter status como approved)
       user.plan = 'free';
-      user.status = 'suspended'; // ✅ CRÍTICO: Suspender quando assinatura expirar
+      // Status permanece como "approved"
       user.planExpiresAt = expiresDate; // Manter a data de expiração para referência
       
       await user.save();
       
       console.log('⏰ Usuário atualizado devido a expiração:');
       console.log(`   - Plan: ${oldPlan} → ${user.plan}`);
-      console.log(`   - Status: ${oldStatus} → ${user.status}`);
+      console.log(`   - Status: ${oldStatus} (mantido)`);
       
       // 🔥 EMITIR EVENTO VIA WEBSOCKET
       this.emitPlanUpdate(user);
