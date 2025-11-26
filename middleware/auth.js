@@ -38,14 +38,17 @@ const authenticateToken = async (req, res, next) => {
         console.log(`   - Data expiração: ${expiresAt.toISOString()}`);
         console.log(`   - Status atual: ${user.status}`);
         
-        // ✅ MUDAR PLAN PARA FREE (manter status como approved)
+        // ✅ MUDAR PLAN PARA FREE E STATUS PARA APPROVED
+        const oldStatus = user.status;
+        const oldPlan = user.plan;
+        
         user.plan = 'free';
-        // Status permanece como "approved"
+        user.status = 'approved'; // ✅ CRÍTICO: Garantir que status seja "approved" quando expirar
         
         await user.save();
         console.log(`✅ [MIDDLEWARE] Usuário ${user.email} atualizado:`);
-        console.log(`   - Plan: premium → free`);
-        console.log(`   - Status: ${user.status} (mantido)`);
+        console.log(`   - Plan: ${oldPlan} → ${user.plan}`);
+        console.log(`   - Status: ${oldStatus} → ${user.status}`);
         
         // 🔥 EMITIR EVENTO VIA WEBSOCKET
         socketEmitter.emitPlanUpdate(user._id.toString(), {
