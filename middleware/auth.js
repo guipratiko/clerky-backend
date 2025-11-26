@@ -26,19 +26,26 @@ const authenticateToken = async (req, res, next) => {
     }
 
     // ✅ VERIFICAR EXPIRAÇÃO DE ASSINATURA PREMIUM (ANTES de verificar status)
-    // Se o usuário tem plano premium mas a data expirou, atualizar para free
+    // Se o usuário tem plano premium mas a data expirou, atualizar para free E suspended
     // Isso deve ser feito ANTES de verificar o status, para garantir que sempre atualiza
     if (user.plan === 'premium' && user.planExpiresAt) {
       const now = new Date();
       const expiresAt = new Date(user.planExpiresAt);
       
       if (now > expiresAt) {
-        console.log(`⏰ [MIDDLEWARE] Plano premium de ${user.email} expirou. Atualizando para free...`);
+        console.log(`⏰ [MIDDLEWARE] Plano premium de ${user.email} expirou. Atualizando...`);
         console.log(`   - Data atual: ${now.toISOString()}`);
         console.log(`   - Data expiração: ${expiresAt.toISOString()}`);
+        console.log(`   - Status atual: ${user.status}`);
+        
+        // ✅ MUDAR PLAN PARA FREE E STATUS PARA SUSPENDED
         user.plan = 'free';
+        user.status = 'suspended'; // ✅ CRÍTICO: Suspender quando assinatura expirar
+        
         await user.save();
-        console.log(`✅ [MIDDLEWARE] Usuário ${user.email} atualizado para free`);
+        console.log(`✅ [MIDDLEWARE] Usuário ${user.email} atualizado:`);
+        console.log(`   - Plan: premium → free`);
+        console.log(`   - Status: ${user.status}`);
         
         // 🔥 EMITIR EVENTO VIA WEBSOCKET
         socketEmitter.emitPlanUpdate(user._id.toString(), {

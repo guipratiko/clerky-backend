@@ -98,17 +98,50 @@ router.post('/verify-and-update', authenticateToken, async (req, res) => {
     // Extrair dados da assinatura
     const subscription = subscriptionStatus.subscription;
     const expiresDate = subscription.expiresDate ? new Date(subscription.expiresDate) : null;
+    const now = new Date();
 
-    console.log('📊 [BACKEND] Dados da assinatura:');
+    console.log('📊 [BACKEND] Dados da assinatura recebida da Apple:');
     console.log('   - productId:', subscription.productId);
-    console.log('   - expiresDate:', expiresDate);
+    console.log('   - expiresDate (Date object):', expiresDate?.toISOString());
+    console.log('   - purchaseDate:', subscription.purchaseDate?.toISOString());
     console.log('   - originalTransactionId:', subscription.originalTransactionId);
+    console.log('   - transactionId:', subscription.transactionId);
+    console.log('   - environment:', subscriptionStatus.environment);
+    
+    if (expiresDate) {
+      const diffMs = expiresDate.getTime() - now.getTime();
+      const diffMinutes = Math.floor(diffMs / (1000 * 60));
+      const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+      const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+      
+      console.log('   - Tempo restante até expiração:');
+      console.log(`      ${diffDays} dias, ${diffHours % 24} horas, ${diffMinutes % 60} minutos`);
+      console.log(`      (${diffMinutes} minutos total)`);
+      
+      if (diffMinutes < 10) {
+        console.warn('   ⚠️ ATENÇÃO: Assinatura expira em menos de 10 minutos!');
+        console.warn('   ⚠️ Isso é NORMAL no sandbox (5 minutos para 1 mês)');
+      }
+    }
 
     // Atualizar usuário
     console.log('💾 [BACKEND] Atualizando usuário no banco...');
     
+    if (!expiresDate) {
+      console.error('❌ [BACKEND] expiresDate é null! Não é possível atualizar usuário.');
+      return res.status(400).json({
+        success: false,
+        error: 'Data de expiração não encontrada na resposta da Apple'
+      });
+    }
+    
+    console.log('💾 [BACKEND] Salvando no banco:');
+    console.log('   - plan: free → premium');
+    console.log('   - planExpiresAt:', expiresDate.toISOString());
+    console.log('   - status:', user.status, '→ approved');
+    
     user.plan = 'premium';
-    user.planExpiresAt = expiresDate;
+    user.planExpiresAt = expiresDate; // ✅ Usar a data EXATA da Apple
     user.status = 'approved';
     user.isInTrial = false;
     
@@ -133,11 +166,23 @@ router.post('/verify-and-update', authenticateToken, async (req, res) => {
 
     await user.save();
 
+    // ✅ VERIFICAR O QUE FOI SALVO (recarregar do banco para confirmar)
+    const savedUser = await User.findById(user._id);
+    
     console.log('✅ [BACKEND] Usuário atualizado com sucesso!');
-    console.log('   - Plan:', user.plan);
-    console.log('   - Expires:', user.planExpiresAt);
-    console.log('   - Status:', user.status);
-    console.log('   - isInTrial:', user.isInTrial);
+    console.log('   - Plan:', savedUser.plan);
+    console.log('   - planExpiresAt (salvo):', savedUser.planExpiresAt?.toISOString());
+    console.log('   - Status:', savedUser.status);
+    console.log('   - isInTrial:', savedUser.isInTrial);
+    console.log('   - iapOriginalTransactionId:', savedUser.iapOriginalTransactionId);
+    
+    // Verificar se a data foi salva corretamente
+    if (savedUser.planExpiresAt) {
+      const savedExpiresDate = new Date(savedUser.planExpiresAt);
+      const diffMs = savedExpiresDate.getTime() - now.getTime();
+      const diffMinutes = Math.floor(diffMs / (1000 * 60));
+      console.log('   - Tempo restante (calculado do banco):', diffMinutes, 'minutos');
+    }
 
     // Retornar sucesso
     res.json({

@@ -40,13 +40,22 @@ async function checkExpiredSubscriptions() {
         console.log(`⏰ [CRON] Atualizando ${user.email}`);
         console.log(`   - Expirou em: ${expiresAt.toISOString()}`);
         console.log(`   - Status atual: ${user.status}`);
+        console.log(`   - Plan atual: ${user.plan}`);
         console.log(`   - Tempo desde expiração: ${diffHours}h ${diffMinutes}min`);
         
+        // ✅ MUDAR PLAN PARA FREE E STATUS PARA SUSPENDED
+        const oldStatus = user.status;
+        const oldPlan = user.plan;
+        
         user.plan = 'free';
+        user.status = 'suspended'; // ✅ CRÍTICO: Suspender quando assinatura expirar
+        
         await user.save();
         
         updated++;
-        console.log(`✅ [CRON] ${user.email} atualizado para free`);
+        console.log(`✅ [CRON] ${user.email} atualizado:`);
+        console.log(`   - Plan: ${oldPlan} → ${user.plan}`);
+        console.log(`   - Status: ${oldStatus} → ${user.status}`);
         
         // 🔥 EMITIR EVENTO VIA WEBSOCKET
         socketEmitter.emitPlanUpdate(user._id.toString(), {
