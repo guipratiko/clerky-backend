@@ -84,7 +84,7 @@ const deleteMediaFileIfExists = async (mediaUrl) => {
 };
 
 // Listar disparos do usuário
-router.get('/', authenticateToken, blockTrialUsers, async (req, res) => {
+router.get('/', authenticateToken, async (req, res) => {
   try {
     const dispatches = await massDispatchService.getUserDispatches(req.user._id);
     res.json({
@@ -138,7 +138,7 @@ router.get('/scheduled', authenticateToken, blockTrialUsers, async (req, res) =>
 });
 
 // Obter estatísticas do usuário
-router.get('/stats', authenticateToken, blockTrialUsers, async (req, res) => {
+router.get('/stats', authenticateToken, async (req, res) => {
   try {
     const stats = await massDispatchService.getUserStats(req.user._id);
     res.json({
@@ -155,7 +155,7 @@ router.get('/stats', authenticateToken, blockTrialUsers, async (req, res) => {
 });
 
 // Obter variáveis disponíveis para templates
-router.get('/template-variables', authenticateToken, blockTrialUsers, async (req, res) => {
+router.get('/template-variables', authenticateToken, async (req, res) => {
   try {
     const variables = templateUtils.getAvailableVariables();
     res.json({
@@ -587,7 +587,7 @@ router.delete('/:id', authenticateToken, blockTrialUsers, async (req, res) => {
 // ===== ROTAS DE TEMPLATES =====
 
 // Listar templates do usuário
-router.get('/templates/list', authenticateToken, blockTrialUsers, async (req, res) => {
+router.get('/templates/list', authenticateToken, async (req, res) => {
   try {
     const templates = await Template.find({ userId: req.user._id })
       .sort({ createdAt: -1 });
