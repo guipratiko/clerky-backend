@@ -153,10 +153,14 @@ class MassDispatchService {
       // Agendar para próximo horário válido
       this.scheduleDispatch(dispatchId);
       
+      // Recarregar dispatch para ter dados atualizados
+      const updatedDispatch = await MassDispatch.findById(dispatchId);
+      
       return { 
         success: true, 
         message: 'Disparo agendado para próximo horário válido',
-        nextRun: dispatch.nextScheduledRun
+        nextRun: dispatch.nextScheduledRun,
+        data: updatedDispatch
       };
     }
 
@@ -195,7 +199,14 @@ class MassDispatchService {
       instanceName: dispatch.instanceName
     });
 
-    return { success: true, message: 'Disparo iniciado com sucesso' };
+    // Recarregar dispatch para ter dados atualizados
+    const updatedDispatch = await MassDispatch.findById(dispatchId);
+    
+    return { 
+      success: true, 
+      message: 'Disparo iniciado com sucesso',
+      data: updatedDispatch
+    };
   }
 
   /**
@@ -734,6 +745,15 @@ class MassDispatchService {
       reason,
       nextScheduledRun: nextScheduledRun ? nextScheduledRun.toISOString() : null
     });
+
+    // Recarregar dispatch para ter dados atualizados
+    const updatedDispatch = await MassDispatch.findById(dispatchId);
+    
+    return { 
+      success: true, 
+      message: 'Disparo pausado com sucesso',
+      data: updatedDispatch
+    };
   }
 
   /**
@@ -792,9 +812,13 @@ class MassDispatchService {
       instanceName: dispatch.instanceName
     });
 
+    // Recarregar dispatch para ter dados atualizados
+    const updatedDispatch = await MassDispatch.findById(dispatchId);
+
     return {
       success: true,
-      message: 'Disparo retomado com sucesso'
+      message: 'Disparo retomado com sucesso',
+      data: updatedDispatch
     };
   }
 
@@ -930,7 +954,14 @@ class MassDispatchService {
       dispatchId: dispatch._id
     });
 
-    return { success: true, message: 'Disparo cancelado com sucesso' };
+    // Recarregar dispatch para ter dados atualizados
+    const updatedDispatch = await MassDispatch.findById(dispatchId);
+
+    return { 
+      success: true, 
+      message: 'Disparo cancelado com sucesso',
+      data: updatedDispatch
+    };
   }
 
   /**

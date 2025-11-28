@@ -392,10 +392,14 @@ router.post('/:id/start', authenticateToken, blockTrialUsers, async (req, res) =
           await dispatch.save();
         }
         
+        // Recarregar dispatch atualizado
+        const updatedDispatch = await MassDispatch.findOne({ _id: id, userId: req.user._id });
+        
         return res.status(400).json({
           success: false,
           error: 'Fora do horário permitido para iniciar o disparo. O disparo será iniciado automaticamente no próximo horário válido.',
-          nextScheduledRun: nextRun ? nextRun.toISOString() : null
+          nextScheduledRun: nextRun ? nextRun.toISOString() : null,
+          data: updatedDispatch
         });
       }
     }
@@ -450,12 +454,8 @@ router.post('/:id/pause', authenticateToken, blockTrialUsers, async (req, res) =
       });
     }
 
-    await massDispatchService.pauseDispatch(id, reason);
-    
-    res.json({
-      success: true,
-      message: 'Disparo pausado com sucesso'
-    });
+    const result = await massDispatchService.pauseDispatch(id, reason);
+    res.json(result);
 
   } catch (error) {
     console.error('Erro ao pausar disparo:', error);

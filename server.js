@@ -13,7 +13,6 @@ const evolutionApi = require('./services/evolutionApi');
 const schedulerService = require('./services/schedulerService');
 const massDispatchService = require('./services/massDispatchService');
 const redisClient = require('./utils/redisClient');
-const checkExpiredSubscriptions = require('./jobs/checkExpiredSubscriptions');
 const socketEmitter = require('./utils/socketEmitter');
 
 const app = express();
@@ -203,8 +202,6 @@ const massDispatchRoutes = require('./routes/mass-dispatch');
 const n8nIntegrationRoutes = require('./routes/n8n-integration');
 const aiWorkflowRoutes = require('./routes/ai-workflows');
 const mindClerkyRoutes = require('./routes/mind-clerky');
-const inAppPurchaseRoutes = require('./routes/in-app-purchase');
-const appStoreConnectRoutes = require('./routes/app-store-connect');
 const mindClerkyExecutor = require('./services/mindClerkyExecutor');
 
 // Usar rotas
@@ -222,8 +219,7 @@ app.use('/api/ai-workflows', aiWorkflowRoutes);
 app.use('/api/contact-crm', require('./routes/contact-crm'));
 app.use('/api/scheduler', require('./routes/scheduler'));
 app.use('/api/mind-clerky', mindClerkyRoutes);
-app.use('/api/in-app-purchase', inAppPurchaseRoutes);
-app.use('/api/app-store-connect', appStoreConnectRoutes);
+app.use('/api/subscriptions', require('./routes/subscriptions'));
 
 // Rota de teste
 app.get('/api/health', (req, res) => {
@@ -312,29 +308,6 @@ server.listen(PORT, () => {
   // Iniciar agendador automático
   schedulerService.start();
   mindClerkyExecutor.init();
-  
-  // ✅ Iniciar verificação de assinaturas expiradas
-  console.log('🕐 Iniciando verificação de assinaturas expiradas...');
-  
-  // Executar imediatamente ao iniciar
-  checkExpiredSubscriptions()
-    .then(result => {
-      console.log(`✅ Verificação inicial concluída: ${result.updated || 0} usuários atualizados`);
-    })
-    .catch(error => {
-      console.error('❌ Erro na verificação inicial:', error);
-    });
-  
-  // Executar a cada 1 minuto (60000 ms)
-  setInterval(async () => {
-    try {
-      await checkExpiredSubscriptions();
-    } catch (error) {
-      console.error('❌ Erro na verificação periódica:', error);
-    }
-  }, 60000); // 1 minuto
-  
-  console.log('✅ Verificação de assinaturas configurada (roda a cada 1 minuto)');
 });
 
 module.exports = { app, server, io };

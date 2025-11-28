@@ -71,23 +71,21 @@ const authenticateToken = async (req, res, next) => {
     }
 
     // Verificar se o plano expirou (exceto para admins)
-    if (user.role !== 'admin' && user.planExpiresAt) {
+    // Se o plano premium expirou, mudar para free mas manter status approved
+    if (user.role !== 'admin' && user.plan === 'premium' && user.planExpiresAt) {
       const now = new Date();
       const expiresAt = new Date(user.planExpiresAt);
       
       if (expiresAt < now) {
-        // Suspender usuário se o plano expirou
-        if (user.status === 'approved') {
-          user.status = 'suspended';
-          await user.save();
-        }
+        // Plano expirou - mudar para free mas manter status approved
+        console.log(`⏰ [AUTH] Plano premium de ${user.email} expirou. Mudando para free...`);
+        const oldPlan = user.plan;
         
-        return res.status(403).json({
-          success: false,
-          error: 'Seu plano expirou. Por favor, renove seu plano para continuar usando o sistema',
-          planExpired: true,
-          expiresAt: user.planExpiresAt
-        });
+        user.plan = 'free';
+        user.status = 'approved'; // Garantir que status seja approved
+        
+        await user.save();
+        console.log(`✅ [AUTH] Usuário ${user.email} atualizado: Plan ${oldPlan} → ${user.plan}, Status: ${user.status}`);
       }
     }
 
@@ -252,6 +250,25 @@ router.post('/login', async (req, res) => {
       });
     }
 
+    // Verificar se o plano premium expirou e atualizar para free
+    // Isso deve ser feito ANTES de verificar o status
+    if (user.role !== 'admin' && user.plan === 'premium' && user.planExpiresAt) {
+      const now = new Date();
+      const expiresAt = new Date(user.planExpiresAt);
+      
+      if (expiresAt < now) {
+        // Plano expirou - mudar para free mas manter status approved
+        console.log(`⏰ [LOGIN] Plano premium de ${user.email} expirou. Mudando para free...`);
+        const oldPlan = user.plan;
+        
+        user.plan = 'free';
+        user.status = 'approved'; // Garantir que status seja approved
+        
+        await user.save();
+        console.log(`✅ [LOGIN] Usuário ${user.email} atualizado: Plan ${oldPlan} → ${user.plan}, Status: ${user.status}`);
+      }
+    }
+
     // Verificar status da conta
     if (user.status === 'rejected') {
       return res.status(403).json({
@@ -371,10 +388,6 @@ router.get('/me', authenticateToken, (req, res) => {
         plan: req.user.plan || 'free',
         planExpiresAt: req.user.planExpiresAt || null,
         isPasswordSet: req.user.isPasswordSet || false,
-        // Campos de In-App Purchase
-        iapTransactionId: req.user.iapTransactionId || null,
-        iapOriginalTransactionId: req.user.iapOriginalTransactionId || null,
-        iapProductId: req.user.iapProductId || null,
         createdAt: req.user.createdAt,
         updatedAt: req.user.updatedAt
       }

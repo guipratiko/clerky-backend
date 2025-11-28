@@ -54,22 +54,9 @@ const UserSchema = new mongoose.Schema({
     type: String,
     default: null
   },
-  // Campos para In-App Purchase (iOS)
-  iapTransactionId: {
-    type: String,
-    default: null
-  },
-  iapOriginalTransactionId: {
-    type: String,
-    default: null
-  },
-  iapProductId: {
-    type: String,
-    default: null
-  },
-  iapReceiptData: {
-    type: String,
-    default: null
+  appStoreTransactionIds: {
+    type: [String],
+    default: []
   },
   trialStartedAt: {
     type: Date,
