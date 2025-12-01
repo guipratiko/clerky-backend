@@ -124,14 +124,6 @@ router.post('/register', async (req, res) => {
       });
     }
 
-    // Validação específica para CPF e telefone (obrigatórios para novos usuários)
-    if (!cpf || !phone) {
-      return res.status(400).json({
-        success: false,
-        error: 'CPF e telefone são obrigatórios para novos usuários'
-      });
-    }
-
     if (password.length < 6) {
       return res.status(400).json({
         success: false,
@@ -139,7 +131,13 @@ router.post('/register', async (req, res) => {
       });
     }
 
-    // Validar formato do CPF (apenas números, 11 dígitos)
+    // Validar formato do CPF (apenas números, 11 dígitos) - obrigatório
+    if (!cpf) {
+      return res.status(400).json({
+        success: false,
+        error: 'CPF é obrigatório'
+      });
+    }
     const cpfClean = cpf.replace(/\D/g, '');
     if (cpfClean.length !== 11) {
       return res.status(400).json({
@@ -148,13 +146,16 @@ router.post('/register', async (req, res) => {
       });
     }
 
-    // Validar formato do telefone (mínimo 10 dígitos)
-    const phoneClean = phone.replace(/\D/g, '');
-    if (phoneClean.length < 10 || phoneClean.length > 11) {
-      return res.status(400).json({
-        success: false,
-        error: 'Telefone inválido. Deve conter DDD + número (10 ou 11 dígitos)'
-      });
+    // Validar formato do telefone (mínimo 10 dígitos) - opcional
+    let phoneClean = null;
+    if (phone) {
+      phoneClean = phone.replace(/\D/g, '');
+      if (phoneClean.length < 10 || phoneClean.length > 11) {
+        return res.status(400).json({
+          success: false,
+          error: 'Telefone inválido. Deve conter DDD + número (10 ou 11 dígitos)'
+        });
+      }
     }
 
     // Verificar se email já existe
@@ -185,7 +186,7 @@ router.post('/register', async (req, res) => {
       email: email.toLowerCase(),
       password,
       cpf: cpfClean,
-      phone: phoneClean,
+      phone: phoneClean || null, // Telefone opcional
       status: 'approved', // Aprovado automaticamente para trial
       isInTrial: true,
       trialStartedAt: trialStart,
