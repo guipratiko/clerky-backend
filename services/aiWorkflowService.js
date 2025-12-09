@@ -198,7 +198,7 @@ class AIWorkflowService {
               parameters: {
                 ...node.parameters,
                 instanceName,
-                remoteJid: "={{ $('Trata dados pos concatenar').item.json.telefoneCliente }}"
+                remoteJid: "={{ $('Trata final1').item.json.instancia }}"
               }
             };
 
@@ -748,7 +748,7 @@ class AIWorkflowService {
             parameters: {
               ...node.parameters,
               instanceName: workflow.instanceName,
-              remoteJid: "={{ $('Trata dados pos concatenar').item.json.telefoneCliente }}"
+              remoteJid: "={{ $('Trata final1').item.json.instancia }}"
             }
           };
 
