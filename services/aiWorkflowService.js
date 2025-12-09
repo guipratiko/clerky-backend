@@ -216,7 +216,7 @@ class AIWorkflowService {
             parameters: {
               ...node.parameters,
               instanceName,
-              remoteJid: "={{ $('Trata Pos Block').item.json.telefoneCliente }}",
+              remoteJid: "={{ $json.telefoneCliente }}",
               messageText: "={{ $json.output }}"
             }
           };
