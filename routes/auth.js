@@ -195,19 +195,40 @@ router.post('/register', async (req, res) => {
 
     await user.save();
 
+    // Gerar token JWT (mesmo formato do login)
+    const token = jwt.sign(
+      { 
+        userId: user._id,
+        email: user.email,
+        role: user.role 
+      },
+      process.env.JWT_SECRET,
+      { expiresIn: '7d' }
+    );
+
     console.log(`📝 Novo usuário registrado: ${email} - Aprovado com 7 dias de trial`);
 
     res.status(201).json({
       success: true,
-      message: 'Conta criada com sucesso! 🎉 Você tem 7 dias de teste grátis. Faça login para começar.',
+      message: 'Conta criada com sucesso! 🎉 Você tem 7 dias de teste grátis.',
       data: {
-        id: user._id,
-        name: user.name,
-        email: user.email,
-        status: user.status,
-        isInTrial: user.isInTrial,
-        trialEndsAt: user.trialEndsAt,
-        trialDays: 7
+        user: {
+          id: user._id,
+          _id: user._id,
+          name: user.name,
+          email: user.email,
+          role: user.role,
+          status: user.status,
+          cpf: user.cpf || null,
+          phone: user.phone || null,
+          plan: user.plan || 'free',
+          planExpiresAt: user.planExpiresAt || null,
+          isInTrial: user.isInTrial || false,
+          trialEndsAt: user.trialEndsAt || null,
+          trialStartedAt: user.trialStartedAt || null,
+          isPasswordSet: user.isPasswordSet || false
+        },
+        token
       }
     });
 
