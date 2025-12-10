@@ -58,6 +58,10 @@ const UserSchema = new mongoose.Schema({
     type: [String],
     default: []
   },
+  googlePlayTransactionIds: {
+    type: [String],
+    default: []
+  },
   trialStartedAt: {
     type: Date,
     default: null
